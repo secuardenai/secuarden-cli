@@ -1,0 +1,47 @@
+version: 2
+
+project_name: secuarden
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/secuarden
+    binary: secuarden
+    ldflags:
+      - -s -w -X github.com/secuarden/secuarden-cli/cmd.Version={{.Version}}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: linux
+        goarch: arm64
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    owner: secuarden
+    name: secuarden-cli
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
