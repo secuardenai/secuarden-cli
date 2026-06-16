@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schema.secuarden.ai/v1/event.schema.json",
+  "title": "Secuarden Event",
+  "description": "A governance event captured from an AI coding agent session. This schema defines the contract between capture agents and the Secuarden SaaS platform.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "https://schema.secuarden.ai/v1/event.schema.json"
+    },
+    "schema_version": {
+      "type": "string",
+      "description": "Schema version for forward compatibility.",
+      "const": "1.0.0"
+    },
+
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique event ID."
+    },
+    "session_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Session this event belongs to."
+    },
+    "sequence": {
+      "type": "integer",
+      "description": "Monotonic counter within session for ordering."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event occurred (UTC)."
+    },
+
+    "source": {
+      "type": "string",
+      "description": "What produced this event.",
+      "enum": ["secuarden-cli", "gryph-adapter", "manual"]
+    },
+    "source_version": {
+      "type": "string",
+      "description": "Version of the capture agent that produced this event."
+    },
+
+    "agent_name": {
+      "type": "string",
+      "description": "AI coding agent name.",
+      "enum": ["claude-code", "cursor", "copilot", "windsurf", "codex", "gemini-cli", "opencode", "unknown"]
+    },
+    "agent_version": {
+      "type": "string"
+    },
+
+    "hook_phase": {
+      "type": "string",
+      "description": "Whether this was captured before or after tool execution.",
+      "enum": ["pre", "post", "session_start", "session_end"]
+    },
+    "action_type": {
+      "type": "string",
+      "description": "Normalized action category.",
+      "enum": [
+        "file_read",
+        "file_write",
+        "file_delete",
+        "command_exec",
+        "network_request",
+        "mcp_tool_use",
+        "subagent_spawn",
+        "plan",
+        "session_start",
+        "session_end",
+        "notification",
+        "unknown"
+      ]
+    },
+    "tool_name": {
+      "type": "string",
+      "description": "Raw tool name from the agent (e.g. 'Bash', 'Edit', 'mcp__memory__create')."
+    },
+
+    "result_status": {
+      "type": "string",
+      "description": "Outcome of the action (post-phase only).",
+      "enum": ["success", "error", "blocked", "rejected", "unknown"]
+    },
+
+    "is_sensitive": {
+      "type": "boolean",
+      "description": "True if the file path matched sensitive patterns. Content fields will be empty."
+    },
+    "redacted_fields": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of field names where content was redacted."
+    },
+
+    "file_path": {
+      "type": "string"
+    },
+    "content_hash": {
+      "type": "string",
+      "description": "SHA-256 of file content. Stored even for sensitive files."
+    },
+    "diff_stats": {
+      "type": "string",
+      "description": "Summary like '+12/-3'. Never contains actual diff content."
+    },
+
+    "command": {
+      "type": "string",
+      "description": "Shell command text (redacted if contains secrets)."
+    },
+    "exit_code": {
+      "type": "integer"
+    },
+    "command_output_preview": {
+      "type": "string",
+      "description": "Truncated stdout/stderr (redacted, max 500 chars)."
+    },
+
+    "mcp_server": {
+      "type": "string",
+      "description": "MCP server name for mcp_tool_use actions."
+    },
+    "mcp_tool": {
+      "type": "string",
+      "description": "MCP tool name for mcp_tool_use actions."
+    },
+
+    "duration_ms": {
+      "type": "integer",
+      "description": "How long the tool call took (post-phase only)."
+    },
+
+    "working_directory": {
+      "type": "string"
+    },
+    "git_repo_url": {
+      "type": "string"
+    },
+    "git_branch": {
+      "type": "string"
+    },
+
+    "developer_name": {
+      "type": "string",
+      "description": "From git config user.name."
+    },
+    "developer_email": {
+      "type": "string",
+      "description": "From git config user.email."
+    },
+    "os_user": {
+      "type": "string",
+      "description": "OS-level username."
+    },
+    "machine_id": {
+      "type": "string",
+      "description": "Stable machine identifier (hostname + OS hash)."
+    },
+
+    "intent_summary": {
+      "type": "string",
+      "description": "Developer's prompt or stated objective for this session. Captured at session_start from conversation context. May be null if not available."
+    },
+
+    "raw_event_hash": {
+      "type": "string",
+      "description": "SHA-256 of the raw JSON received from the agent hook (pre-redaction). For integrity verification."
+    },
+
+    "model": {
+      "type": "string",
+      "description": "LLM model used in the session (e.g. claude-sonnet-4-20250514)."
+    },
+
+    "compliance_hints": {
+      "type": "object",
+      "description": "Populated by the SaaS on ingest, not by the capture agent. Contains control mappings, confidence scores, etc.",
+      "properties": {
+        "controls": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Mapped compliance controls (e.g. ['SOC2-CC8.1', 'ISO27001-A.8.32'])."
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "risk_level": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"]
+        }
+      }
+    }
+  },
+
+  "required": [
+    "$schema",
+    "schema_version",
+    "id",
+    "session_id",
+    "sequence",
+    "timestamp",
+    "source",
+    "agent_name",
+    "hook_phase",
+    "action_type",
+    "is_sensitive"
+  ]
+}
