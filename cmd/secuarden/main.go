@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/secuarden/secuarden-cli/cmd"
+	"github.com/secuardenai/secuarden-cli/cmd"
 )
 
 func main() {

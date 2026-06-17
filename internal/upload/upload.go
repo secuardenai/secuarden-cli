@@ -13,8 +13,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/secuarden/secuarden-cli/internal/config"
-	"github.com/secuarden/secuarden-cli/internal/storage"
+	"github.com/secuardenai/secuarden-cli/internal/config"
+	"github.com/secuardenai/secuarden-cli/internal/storage"
 )
 
 // Feedback is the subset of the session-sync response shown to the developer.

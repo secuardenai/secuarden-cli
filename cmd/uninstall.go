@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/secuarden/secuarden-cli/internal/agent"
+	"github.com/secuardenai/secuarden-cli/internal/agent"
 )
 
 var (

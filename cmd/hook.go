@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/secuarden/secuarden-cli/internal/capture"
+	"github.com/secuardenai/secuarden-cli/internal/capture"
 )
 
 // hookCmd is hidden from --help; it's invoked by Claude Code hooks only.
