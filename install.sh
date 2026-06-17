@@ -4,7 +4,7 @@
 
 set -e
 
-REPO="secuarden/secuarden-cli"
+REPO="secuardenai/secuarden-cli"
 INSTALL_DIR="/usr/local/bin"
 BINARY="secuarden"
 

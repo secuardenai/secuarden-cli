@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/secuarden/secuarden-cli/internal/config"
-	"github.com/secuarden/secuarden-cli/internal/events"
-	"github.com/secuarden/secuarden-cli/internal/identity"
-	"github.com/secuarden/secuarden-cli/internal/privacy"
-	"github.com/secuarden/secuarden-cli/internal/storage"
-	"github.com/secuarden/secuarden-cli/internal/upload"
+	"github.com/secuardenai/secuarden-cli/internal/config"
+	"github.com/secuardenai/secuarden-cli/internal/events"
+	"github.com/secuardenai/secuarden-cli/internal/identity"
+	"github.com/secuardenai/secuarden-cli/internal/privacy"
+	"github.com/secuardenai/secuarden-cli/internal/storage"
+	"github.com/secuardenai/secuarden-cli/internal/upload"
 )
 
 // Version is set at build time via ldflags.

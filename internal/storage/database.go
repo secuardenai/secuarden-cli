@@ -9,7 +9,7 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
-	"github.com/secuarden/secuarden-cli/internal/events"
+	"github.com/secuardenai/secuarden-cli/internal/events"
 )
 
 // DB wraps the SQLite connection.

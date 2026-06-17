@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/secuarden/secuarden-cli/internal/events"
+	"github.com/secuardenai/secuarden-cli/internal/events"
 )
 
 func tempDB(t *testing.T) (*DB, string) {

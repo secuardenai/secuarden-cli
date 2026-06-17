@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/secuarden/secuarden-cli/internal/agent"
-	"github.com/secuarden/secuarden-cli/internal/config"
-	"github.com/secuarden/secuarden-cli/internal/identity"
-	"github.com/secuarden/secuarden-cli/internal/storage"
-	"github.com/secuarden/secuarden-cli/internal/upload"
+	"github.com/secuardenai/secuarden-cli/internal/agent"
+	"github.com/secuardenai/secuarden-cli/internal/config"
+	"github.com/secuardenai/secuarden-cli/internal/identity"
+	"github.com/secuardenai/secuarden-cli/internal/storage"
+	"github.com/secuardenai/secuarden-cli/internal/upload"
 )
 
 var statusCmd = &cobra.Command{

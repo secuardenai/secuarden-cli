@@ -1,4 +1,4 @@
-module github.com/secuarden/secuarden-cli
+module github.com/secuardenai/secuarden-cli
 
 go 1.25.0
 
