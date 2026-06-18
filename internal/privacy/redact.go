@@ -21,17 +21,17 @@ func init() {
 		{"aws_access_key", `AKIA[0-9A-Z]{16}`},
 		{"github_token", `gh[pousr]_[A-Za-z0-9_]{36,255}`},
 		{"gitlab_token", `glpat-[A-Za-z0-9\-_]{20,}`},
+		{"bearer_token", `(?i)Bearer\s+[A-Za-z0-9\-_.~+/]+=*`},
+		{"basic_auth", `(?i)Basic\s+[A-Za-z0-9+/]+=*`},
 		{"openai_key", `sk-[A-Za-z0-9]{20,}`},
 		{"anthropic_key", `sk-ant-[A-Za-z0-9\-_]{20,}`},
 		{"stripe_key", `[sr]k_(live|test)_[A-Za-z0-9]{20,}`},
 		{"slack_token", `xox[baprs]-[A-Za-z0-9\-]+`},
 		{"npm_token", `npm_[A-Za-z0-9]{36,}`},
-		{"bearer_token", `(?i)Bearer\s+[A-Za-z0-9\-_.~+/]+=*`},
-		{"basic_auth", `(?i)Basic\s+[A-Za-z0-9+/]+=*`},
 		{"private_key_block", `(?s)-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----.*?-----END\s+(RSA\s+)?PRIVATE\s+KEY-----`},
 		{"connection_string", `[a-z]+://[^:]+:[^@]+@`},
 		{"jwt", `eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`},
-		{"env_secret", `(?i)(API_KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL|AUTH|PRIVATE_KEY)\s*=\s*[^\s"']{8,}`},
+		{"env_secret", `(?i)[A-Za-z0-9_]*(?:API_KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL|AUTH|PRIVATE_KEY)[A-Za-z0-9_]*\s*=\s*[^\s"']{8,}`},
 	}
 
 	for _, d := range defs {
