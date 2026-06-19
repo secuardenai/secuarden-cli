@@ -87,17 +87,34 @@ func (d *DB) EndSession(sessionID string) error {
 	return err
 }
 
-// UpdateSession sets optional session fields (identity, git, model).
-func (d *DB) UpdateSession(sessionID string, fields map[string]interface{}) error {
-	for key, val := range fields {
-		if _, err := d.db.Exec(
-			fmt.Sprintf("UPDATE sessions SET %s = ? WHERE id = ?", key),
-			val, sessionID,
-		); err != nil {
-			return err
-		}
-	}
-	return nil
+// SessionIdentity holds developer and git identity fields written to a session row.
+type SessionIdentity struct {
+	DeveloperName  string
+	DeveloperEmail string
+	OSUser         string
+	MachineID      string
+	GitBranch      string
+	GitRepoURL     string
+}
+
+// UpdateSessionIdentity writes developer and git identity fields for a session.
+// Uses a fully static SQL statement — no column name is ever interpolated.
+func (d *DB) UpdateSessionIdentity(sessionID string, id SessionIdentity) error {
+	_, err := d.db.Exec(`
+		UPDATE sessions SET
+			developer_name  = ?,
+			developer_email = ?,
+			os_user         = ?,
+			machine_id      = ?,
+			git_branch      = ?,
+			git_repo_url    = ?
+		WHERE id = ?`,
+		nullStr(id.DeveloperName), nullStr(id.DeveloperEmail),
+		nullStr(id.OSUser), nullStr(id.MachineID),
+		nullStr(id.GitBranch), nullStr(id.GitRepoURL),
+		sessionID,
+	)
+	return err
 }
 
 // NextSequence returns the next sequence number for a session.

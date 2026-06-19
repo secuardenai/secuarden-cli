@@ -21,6 +21,10 @@ import (
 // Version is set at build time via ldflags.
 var Version = "dev"
 
+// maxStdinBytes caps hook input to 10 MB — tool responses are never legitimately
+// larger, and an unbounded read could exhaust memory.
+const maxStdinBytes = 10 * 1024 * 1024
+
 // HandleHookEvent reads stdin, processes the hook event, and writes to SQLite.
 // It always exits cleanly — errors are logged, never propagated to the caller.
 func HandleHookEvent(phase string, version string) {
@@ -30,8 +34,8 @@ func HandleHookEvent(phase string, version string) {
 }
 
 func handle(phase, version string) error {
-	// 1. Read all of stdin
-	data, err := io.ReadAll(os.Stdin)
+	// 1. Read stdin with a hard cap — tool responses are never legitimately huge.
+	data, err := io.ReadAll(io.LimitReader(os.Stdin, maxStdinBytes))
 	if err != nil {
 		return fmt.Errorf("read stdin: %w", err)
 	}
@@ -136,15 +140,18 @@ func handle(phase, version string) error {
 		logError(fmt.Errorf("ensure session (non-fatal on session-end): %w", err))
 	}
 
-	// Update session with identity info if we have it
+	// Update session with identity info if we have it.
+	// Scrub credentials from git remote URLs before storage — HTTP remotes can
+	// contain embedded tokens (https://user:token@host/...).
 	if dev != nil {
-		_ = db.UpdateSession(sessionID, map[string]interface{}{
-			"developer_name":  dev.Name,
-			"developer_email": dev.Email,
-			"os_user":         dev.OSUser,
-			"machine_id":      dev.MachineID,
-			"git_branch":      dev.GitBranch,
-			"git_repo_url":    dev.GitRepo,
+		gitRepoURL, _ := privacy.Redact(dev.GitRepo)
+		_ = db.UpdateSessionIdentity(sessionID, storage.SessionIdentity{
+			DeveloperName:  dev.Name,
+			DeveloperEmail: dev.Email,
+			OSUser:         dev.OSUser,
+			MachineID:      dev.MachineID,
+			GitBranch:      dev.GitBranch,
+			GitRepoURL:     gitRepoURL,
 		})
 	}
 

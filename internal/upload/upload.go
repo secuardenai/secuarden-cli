@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -88,6 +89,11 @@ func SyncSession(cfg *config.Config, summary *storage.SessionSummary) (*Feedback
 		return nil, nil
 	}
 
+	// Reject non-HTTPS endpoints — the API key must not travel in plaintext.
+	if u, err := url.Parse(cfg.APIURL); err != nil || u.Scheme != "https" {
+		return nil, fmt.Errorf("sync: api_url must use HTTPS, got %q", cfg.APIURL)
+	}
+
 	body, err := json.Marshal(summary)
 	if err != nil {
 		return nil, fmt.Errorf("marshal payload: %w", err)
@@ -108,7 +114,7 @@ func SyncSession(cfg *config.Config, summary *storage.SessionSummary) (*Feedback
 	}
 	defer resp.Body.Close()
 
-	raw, _ := io.ReadAll(resp.Body)
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return nil, fmt.Errorf("session-sync %d: %s", resp.StatusCode, string(raw))
 	}
