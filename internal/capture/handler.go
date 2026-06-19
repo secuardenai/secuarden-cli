@@ -148,13 +148,6 @@ func handle(phase, version string) error {
 		})
 	}
 
-	// Special handling for session_end — runs regardless of EnsureSession outcome
-	// because the session was already persisted by the session-start hook.
-	if hookPhase == events.HookPhaseSessionEnd {
-		_ = db.EndSession(sessionID)
-		syncOnSessionEnd(sessionID, db)
-	}
-
 	// 12. Compute sequence and insert event
 	seq, err := db.NextSequence(sessionID)
 	if err != nil {
@@ -200,7 +193,18 @@ func handle(phase, version string) error {
 		e.GitRepoURL = dev.GitRepo
 	}
 
-	return db.WriteEvent(e)
+	if err := db.WriteEvent(e); err != nil {
+		return err
+	}
+
+	// For session_end: write the event first so EndSession sees the correct
+	// count, then sync so the SaaS payload reflects the final event_count.
+	if hookPhase == events.HookPhaseSessionEnd {
+		_ = db.EndSession(sessionID)
+		syncOnSessionEnd(sessionID, db)
+	}
+
+	return nil
 }
 
 func normalizePhase(phase string) string {
