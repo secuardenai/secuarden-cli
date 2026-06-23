@@ -164,8 +164,8 @@ Behind the scenes, each event is a structured record in SQLite:
   "file_path": ".env.local",
   "content_hash": "sha256:a3f2b8c1...",
   "redacted_fields": ["content"],
-  "developer_email": "gaurab@example.com",
-  "os_user": "gaurab",
+  "developer_email": "developer@example.com",
+  "os_user": "developer",
   "raw_event_hash": "sha256:d4e5f6..."
 }
 ```
