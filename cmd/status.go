@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/secuardenai/secuarden-cli/internal/agent"
 	"github.com/secuardenai/secuarden-cli/internal/config"
 	"github.com/secuardenai/secuarden-cli/internal/identity"
 	"github.com/secuardenai/secuarden-cli/internal/storage"
 	"github.com/secuardenai/secuarden-cli/internal/upload"
+	"github.com/spf13/cobra"
 )
 
 var statusCmd = &cobra.Command{
@@ -24,10 +24,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Secuarden Capture Agent %s\n\n", Version)
 
 	// Hook status
+	status := ""
 	if agent.HooksInstalled() {
-		fmt.Println("Status: Active")
+		status = "Active"
 	} else {
-		fmt.Println("Status: Hooks not installed (run: secuarden init)")
+		status = "Hooks not installed (run: secuarden init)"
 	}
 
 	// Database
@@ -35,7 +36,6 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Database: %s\n", dbPath)
 
 	db, err := storage.Open(dbPath)
 	if err != nil {
@@ -50,26 +50,35 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	sizeStr := formatBytes(stats.DBSizeBytes)
-	fmt.Printf("         (%s)\n", sizeStr)
-	fmt.Printf("Sessions: %d | Events: %d\n", stats.TotalSessions, stats.TotalEvents)
 
 	// Developer identity
 	dev := identity.Capture()
+	developer := "unknown"
 	if dev.Name != "" || dev.Email != "" {
-		fmt.Printf("Developer: %s <%s>\n", dev.Name, dev.Email)
+		developer = fmt.Sprintf("%s <%s>", dev.Name, dev.Email)
 	}
 
 	// Sync mode
 	cfg, _ := config.Load()
+	syncMode := "local only (run: secuarden init --api-key <key> to enable)"
 	if cfg != nil && cfg.SyncEnabled {
-		fmt.Printf("Sync: enabled (%s)\n", cfg.APIURL)
-	} else {
-		fmt.Println("Sync: local only  (run: secuarden init --api-key <key> to enable)")
+		syncMode = fmt.Sprintf("enabled (%s)", cfg.APIURL)
 	}
+
+	printTable([]string{"Field", "Value"}, [][]string{
+		{"Status", status},
+		{"Database", dbPath},
+		{"DB size", sizeStr},
+		{"Sessions", fmt.Sprintf("%d", stats.TotalSessions)},
+		{"Events", fmt.Sprintf("%d", stats.TotalEvents)},
+		{"Developer", developer},
+		{"Sync", syncMode},
+	})
 
 	// Recent events
 	if len(stats.RecentEvents) > 0 {
 		fmt.Println("\nLast 5 events:")
+		rows := make([][]string, 0, len(stats.RecentEvents))
 		for _, e := range stats.RecentEvents {
 			ts := e.Timestamp
 			if len(ts) > 19 {
@@ -79,8 +88,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			if len(summary) > 60 {
 				summary = summary[:60] + "..."
 			}
-			fmt.Printf("  %-20s  %-16s  %s\n", ts, e.ActionType, summary)
+			rows = append(rows, []string{ts, e.ActionType, summary})
 		}
+		printTable([]string{"Timestamp", "Action", "Summary"}, rows)
 	} else {
 		fmt.Println("\nNo events captured yet. Run a Claude Code session to capture events.")
 	}
@@ -125,13 +135,19 @@ func printLastFeedback() {
 		mark = "·"
 	}
 
-	fmt.Println()
-	fmt.Println("── Last changeset evaluation " + strings.Repeat("─", 20))
+	fmt.Println("\nLast changeset evaluation:")
+	rows := [][]string{}
 	if age != "" {
-		fmt.Printf("   %s  (%s)\n", sf.CapturedAt[:19], age)
+		rows = append(rows, []string{"Captured", fmt.Sprintf("%s (%s)", sf.CapturedAt[:19], age)})
+	} else {
+		rows = append(rows, []string{"Captured", sf.CapturedAt})
 	}
-	fmt.Printf("   %s  %s\n", mark, sf.Summary)
-	fmt.Println(strings.Repeat("─", 49))
+	rows = append(rows,
+		[]string{"Decision", fmt.Sprintf("%s %s", mark, sf.Decision)},
+		[]string{"Risk", sf.RiskLevel},
+		[]string{"Summary", sf.Summary},
+	)
+	printTable([]string{"Field", "Value"}, rows)
 }
 
 func formatBytes(b int64) string {
@@ -143,4 +159,47 @@ func formatBytes(b int64) string {
 	default:
 		return fmt.Sprintf("%.1f MB", float64(b)/(1024*1024))
 	}
+}
+
+func printTable(headers []string, rows [][]string) {
+	widths := make([]int, len(headers))
+	for i, h := range headers {
+		widths[i] = len(h)
+	}
+	for _, row := range rows {
+		for i := range headers {
+			if i < len(row) && len(row[i]) > widths[i] {
+				widths[i] = len(row[i])
+			}
+		}
+	}
+
+	printSeparator(widths)
+	fmt.Print("|")
+	for i, h := range headers {
+		fmt.Printf(" %-*s |", widths[i], h)
+	}
+	fmt.Println()
+	printSeparator(widths)
+	for _, row := range rows {
+		fmt.Print("|")
+		for i := range headers {
+			cell := ""
+			if i < len(row) {
+				cell = row[i]
+			}
+			fmt.Printf(" %-*s |", widths[i], cell)
+		}
+		fmt.Println()
+	}
+	printSeparator(widths)
+}
+
+func printSeparator(widths []int) {
+	fmt.Print("+")
+	for _, w := range widths {
+		fmt.Print(strings.Repeat("-", w+2))
+		fmt.Print("+")
+	}
+	fmt.Println()
 }
