@@ -1,0 +1,9 @@
+{
+  "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "src/auth/middleware.ts",
+    "old_string": "function old() {}",
+    "new_string": "function new() {}"
+  }
+}
