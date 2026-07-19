@@ -1,42 +1,39 @@
-# secuarden-cli
+# The governance flight recorder for AI-written code
 
-**Know exactly what your AI coding agent did — every file read, every command run, every secret touched. Get immediate risk feedback when a session ends.**
+Git records what code changed. Secuarden records what Claude Code actually did at hook time—files read and written, commands, MCP calls, sensitive-path access, and the active developer identity—so developers, security teams, and platform engineers can investigate and govern AI-assisted work using captured evidence.
 
-<!-- TODO: Replace with actual terminal recording -->
-<!-- ![secuarden demo](docs/demo.gif) -->
+- **Authoritative hook-time capture** — records Claude Code actions as they occur, preserving operational detail that Git history does not contain.
+- **Local-first by default** — without an API key, redacted events remain in `~/.secuarden/secuarden.db`; no SaaS sync is enabled.
+- **Investigation-ready evidence** — inspect capture health, raw events, individual sessions, and local accountability reports from the CLI.
+- **Optional SaaS feedback** — API-key-enabled sync sends redacted summaries for branch-level risk feedback.
+- **Shared accountability** — gives developers, security teams, and platform engineers a common evidence record.
 
-```bash
-$ secuarden init --api-key sec_xxxx
+> This demo uses the actual Secuarden binary to replay sanitized Claude Code hook fixtures in an isolated temporary HOME. It is not a live agent session and makes no SaaS call.
+
+![Secuarden CLI local accountability demo](docs/demo/secuarden-terminal-demo.gif)
+
+```text
+$ secuarden init
 ✓ Claude Code detected
-✓ SaaS sync enabled — session feedback will appear in terminal
+✓ Local-only mode (pass --api-key to enable SaaS sync)
 ✓ Hooks installed (PreToolUse, PostToolUse, SessionStart, SessionEnd)
 ✓ Database created at ~/.secuarden/secuarden.db
-✓ Developer identity: alice <alice@company.com>
 
-# ... use Claude Code normally across multiple sessions ...
+$ secuarden status
+Capture: Active · Claude Code
+Database: ~/.secuarden/secuarden.db · 76 KB
+Sync: Local only
 
+# Optional: enable SaaS sync and branch-level risk feedback
+$ secuarden init --api-key sec_xxxx
+✓ SaaS sync enabled — session feedback will appear in terminal
+
+# After a Claude Code session, when synced evidence requires review:
 ── Secuarden ──────────────────────────────────────
 ⚑ REVIEW REQUIRED — 'feat/auth-refactor' (2 session(s), high risk).
   Triggered: AI-authored authentication changes. Assign AppSec reviewer.
 ───────────────────────────────────────────────────
 ```
-
-## Why this exists
-
-AI coding agents read your files, run shell commands, access environment variables, and modify your codebase — often 50+ actions per session. When your SOC 2 auditor asks *"who authorized this change and what did the AI actually do?"* nobody can answer. Git logs show code was committed. They don't show the agent read your `.env`, executed 47 shell commands, and rewrote 12 files in 90 seconds.
-
-secuarden-cli is a passive, zero-config capture agent that records every action your AI coding agent takes. No dashboards, no analytics, no opinions — just a tamper-aware local ledger of what actually happened, with secrets automatically scrubbed before storage.
-
-## Features
-
-- **One-command install** — `secuarden init` detects your agent, installs hooks, creates the database. Add `--api-key` once to enable SaaS sync.
-- **Captures everything** — file reads, file writes, shell commands, MCP tool calls, subagent spawns. Every action gets a structured event with timestamp, developer identity, and session context.
-- **Immediate risk feedback** — when SaaS sync is enabled, risk is evaluated across the full branch history (all sessions, not just the last one) and printed in the terminal the moment a session ends.
-- **AI Change Set tracking** — multiple sessions on the same branch are automatically grouped into one provenance unit. Risk accumulates and is re-evaluated after every session, so you see the full picture before opening a PR.
-- **Secrets never hit disk** — two-layer privacy: sensitive file detection (`.env`, `*.pem`, `.ssh/*`) suppresses all content. Content redaction scrubs API keys, tokens, JWTs, and credentials from commands and output. What gets stored is the action, not the secret.
-- **Structured event schema** — every event follows a [documented JSON schema](schema/secuarden-event.schema.json) designed for downstream compliance tooling, SIEM ingestion, or your own analysis.
-- **Developer identity** — each session records who ran it (git config + OS user), not just what happened.
-- **Local-first, opt-in sync** — all data stays in SQLite by default. SaaS sync and feedback require an explicit `--api-key`.
 
 ## Quickstart
 
@@ -57,6 +54,11 @@ claude "refactor the auth module"
 
 # See what was captured
 secuarden status
+
+# Inspect, investigate, and export local activity
+secuarden events --last 20
+secuarden session <session-id>
+secuarden report --since 24h --md
 ```
 
 ### With SaaS sync (recommended for teams)
@@ -99,7 +101,7 @@ secuarden init --api-key sec_xxxx --api-url https://secuarden.example.com
 
 When you run Claude Code through the IDE extension rather than the terminal, hook output isn't shown in a visible terminal. The session is still captured to local SQLite and — if sync is enabled — the changeset is still evaluated. The feedback is written to `~/.secuarden/last-feedback.json` after every session.
 
-To see it, open any terminal and run:
+To inspect local capture health and recent activity, open any terminal and run:
 
 ```bash
 secuarden status
@@ -108,45 +110,161 @@ secuarden status
 ```
 Secuarden Capture Agent v0.1.0
 
-Status: Active
-Database: ~/.secuarden/secuarden.db (284 KB)
-Sessions: 7 | Events: 312
+Capture: Active · Claude Code
+Database: ~/.secuarden/secuarden.db · 284 KB
+Sync: Enabled · https://app.secuarden.ai
 Developer: alice <alice@company.com>
-Sync: enabled (https://app.secuarden.ai)
 
-Last 5 events:
-  2026-05-29 10:44:58  file_write    src/auth/session.ts
-  2026-05-29 10:44:59  file_write    src/auth/oauth.ts
-  2026-05-29 10:45:01  command_exec  npm test (exit: 0)
-  2026-05-29 10:45:03  file_read     .env.local [SENSITIVE]
-  2026-05-29 10:45:05  command_exec  git commit -m "refactor auth"
+Today
+  2 sessions · 43 actions · 9 files read · 2 files changed
+  8 commands · 1 MCP call · 1 sensitive access
 
-── Last changeset evaluation ────────────────────────
-   2026-05-29 10:45:06  (just now)
-   ⚑  REVIEW REQUIRED — 'feat/auth-refactor' (2 session(s), high risk).
-      Triggered: AI-authored authentication changes. Assign AppSec reviewer.
-─────────────────────────────────────────────────────
+Needs attention
+  ⚠ Sensitive access   .env.local
+  ⚠ Failed command     npm test · exit 1
+
+Recent sessions
+  10:45  auth-service         27 actions · 2 files changed · 2 warnings
+  09:18  auth-service         16 actions · no changes · clean
+
+Run `secuarden events` for the raw event log.
+Run `secuarden report` for the full accountability report.
 ```
 
-## Example Output
+## Local activity commands
 
-After a typical Claude Code session where you ask it to refactor an authentication module, `secuarden status` might show:
+The CLI uses progressive disclosure so capture health, raw evidence, investigation,
+and reporting remain separate:
+
+- `secuarden status` — capture health, today's aggregate activity, evidence-backed attention findings, and recent sessions.
+- `secuarden events` — chronological raw capture events. Combine `--last`, `--action`, `--session`, and `--sensitive`; add `--json` for scripts.
+- `secuarden session <id>` — files, commands and outcomes, MCP calls, sensitive accesses, and failures for one session; supports `--json`.
+- `secuarden report` — a 24-hour accountability report scoped to the current Git repository by default. Use `--repo`, `--all-repos`, `--absolute-paths`, `--limit`, `--md`, or `--json` as needed.
+
+All formats use only already-redacted database fields. Reporting never rereads files
+and does not make network calls.
+
+### Status
 
 ```
 Secuarden Capture Agent v0.1.0
-Status: Active
-Database: ~/.secuarden/secuarden.db (284 KB)
-Sessions: 1 | Events: 43
+Capture: Active · Claude Code
+Database: ~/.secuarden/secuarden.db · 76 KB
+Sync: Local only
+Developer: gaurabb <gaurabb@example.com>
 
-Last 5 events:
-  2026-05-28 10:41:12  file_read     src/auth/session.ts
-  2026-05-28 10:41:14  file_read     .env.local [SENSITIVE]
-  2026-05-28 10:41:15  command_exec  npm run test:auth (exit: 1)
-  2026-05-28 10:41:18  file_write    src/auth/session.ts (+34/-12)
-  2026-05-28 10:41:20  command_exec  npm run test:auth (exit: 0)
+Today
+  3 sessions · 52 actions · 14 files read · 6 files changed
+  21 commands · 2 MCP calls · 1 sensitive access
+
+Needs attention
+  ⚠ Sensitive access   .env.local
+  ⚠ Failed command     npm test · exit 1
+
+Recent sessions
+  18:04  verify-low-demo      23 actions · 4 files changed · 1 warning
+  17:51  verify-low-demo      18 actions · 2 files changed · clean
+  16:22  main                 11 actions · no changes · clean
 ```
 
-Behind the scenes, each event is a structured record in SQLite:
+### Events
+
+```bash
+$ secuarden events --last 3
+2026-07-19T08:03:00Z  file_read         .env.local [SENSITIVE]
+  status: success
+2026-07-19T08:04:00Z  command_exec      npm test
+  status: error · exit: 1
+2026-07-19T08:05:00Z  mcp_tool_use      memory/create_entities
+  status: success
+
+$ secuarden events --action command_exec --session a1b2c3 --json
+```
+
+### Session
+
+```text
+Secuarden Session
+
+Session ID: a1b2c3
+Agent: Claude Code
+Developer: gaurabb <gaurabb@example.com>
+Repository: https://example.com/secuarden/secuarden-cli.git
+Branch: main
+Started: 2026-07-19T08:00:00Z
+Ended: 2026-07-19T08:10:00Z
+Duration: 10m0s
+Events: 23
+
+Actions
+  command_exec         4
+  file_read            12
+  file_write           5
+  session_end          1
+  session_start        1
+
+Sensitive accesses
+  [SENSITIVE] file_read · .env.local
+
+Failed, blocked, or rejected actions
+  Failed command · npm test · exit 1
+```
+
+### Report
+
+Reports are repository-scoped by default, so activity from unrelated projects in
+the global database is not mixed together. Repository identities normalize common
+SSH and HTTPS forms of the same Git remote without making a network request.
+
+```bash
+# Current Git repository, terminal lists limited to 10 entries each
+secuarden report
+
+# Select by local path, remote, or owner/repository identity
+secuarden report --repo ../verifyflow-demo
+secuarden report --repo git@github.com:example/verifyflow-demo.git
+secuarden report --repo example/verifyflow-demo
+
+# Cross-repository report, grouped by canonical repository identity
+secuarden report --all-repos
+
+# Restore full absolute paths or change the terminal list limit
+secuarden report --absolute-paths --limit 25
+```
+
+Paths inside the selected repository are rendered relative to its verified Git
+root. External reads and changes remain separate, and home-directory paths are
+abbreviated with `~`. With `--all-repos`, internal paths are prefixed with the
+repository name. Existing JSON path fields retain their original stored values;
+additive repository/external collections and `repository`, `display_path`, and
+`external` metadata describe classification and presentation.
+
+```text
+Secuarden accountability report
+Repository: example/verifyflow-demo
+Period: Last 24 hours · 18 Jul 13:52 – 19 Jul 13:52 AEST
+
+Summary
+  1 session · 16 actions
+  1 repository file changed · 1 external file changed
+  4 commands succeeded · 0 failed
+  1 sensitive-path access
+
+Agent activity
+  Claude Code · 1 session · 16 actions
+
+Files changed
+  verifyflow/api.py
+
+External activity
+  Read     ~/Library/Application Support/Code/User/settings.json
+  Changed  ~/other-project/generated.py
+
+Sensitive-path access
+  [SENSITIVE] 19 Jul 10:52 AEST · .env.example · session a1b2c3
+```
+
+Behind the scenes, each event remains a structured record in SQLite:
 
 ```json
 {
@@ -164,8 +282,8 @@ Behind the scenes, each event is a structured record in SQLite:
   "file_path": ".env.local",
   "content_hash": "sha256:a3f2b8c1...",
   "redacted_fields": ["content"],
-  "developer_email": "developer@example.com",
-  "os_user": "developer",
+  "developer_email": "gaurab@example.com",
+  "os_user": "gaurab",
   "raw_event_hash": "sha256:d4e5f6..."
 }
 ```
@@ -176,7 +294,7 @@ Behind the scenes, each event is a structured record in SQLite:
 Your engineering team adopted AI coding tools. Your auditor is going to ask about it. secuarden-cli gives you the raw evidence trail — what the agent did, which files it touched, which commands it ran — so you're not scrambling when CC8.1 comes up in your next SOC 2 audit.
 
 ### For platform engineering teams
-You rolled out Claude Code or Cursor to 50 engineers. You have no visibility into what these agents are doing across your codebase. secuarden-cli gives you structured, queryable data on agent behavior without slowing anyone down.
+You rolled out Claude Code to 50 engineers. You have no visibility into what the agent is doing across your codebase. secuarden-cli gives you structured, queryable data on agent behavior without slowing anyone down.
 
 ### For individual developers
 You prompted the agent to "fix the login bug" and it touched 15 files. Which ones? Did it read your `.env`? Did it run anything unexpected? `secuarden status` tells you in 2 seconds.
@@ -193,7 +311,7 @@ The [Secuarden Event Schema](schema/secuarden-event.schema.json) is designed for
 | **Developer identity** | Git config + OS user per session | Not captured |
 | **Event schema** | Documented JSON schema, versioned, designed for compliance tooling ingest | Internal schema, JSONL export |
 | **Redaction transparency** | `[REDACTED:bearer_token]` — you see what was scrubbed | Content replaced silently |
-| **Design philosophy** | Minimal CLI. Capture and store. Analysis happens elsewhere. | Full-featured: query, filter, diff, stats, session replay |
+| **Design philosophy** | Focused local capture, evidence investigation, and accountability export | Full-featured: query, filter, diff, stats, session replay |
 | **Agent support** | Claude Code (more coming) | Claude Code, Cursor, Windsurf, Gemini CLI, Copilot, OpenCode |
 | **Language** | Go | Go |
 | **License** | Apache 2.0 | Apache 2.0 |
@@ -220,7 +338,7 @@ Gryph is excellent if you want a local developer debugging tool with rich queryi
 - [x] SaaS sync with `--api-key` switch
 - [x] AI Change Set — multi-session risk aggregation per branch
 - [x] Immediate terminal feedback on session-end
-- [x] `secuarden status` shows last changeset evaluation (works in IDE extensions)
+- [x] Progressive local activity commands: `status`, `events`, `session`, and `report`
 - [ ] Cursor support
 - [ ] Copilot support
 - [ ] Gryph event adapter (ingest Gryph JSONL into Secuarden schema)

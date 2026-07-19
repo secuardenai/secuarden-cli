@@ -21,6 +21,9 @@ func Execute() error {
 func init() {
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(statusCmd)
+	rootCmd.AddCommand(eventsCmd)
+	rootCmd.AddCommand(sessionCmd)
+	rootCmd.AddCommand(reportCmd)
 	rootCmd.AddCommand(uninstallCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(hookCmd)
