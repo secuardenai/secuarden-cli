@@ -142,7 +142,7 @@ and reporting remain separate:
 - `secuarden status` — capture health, today's aggregate activity, evidence-backed attention findings, and recent sessions.
 - `secuarden events` — chronological raw capture events. Combine `--last`, `--action`, `--session`, and `--sensitive`; add `--json` for scripts.
 - `secuarden session <id>` — files, commands and outcomes, MCP calls, sensitive accesses, and failures for one session; supports `--json`.
-- `secuarden report` — a 24-hour local accountability report by default. Use `--since 7d`, `--md`, or `--json`.
+- `secuarden report` — a 24-hour accountability report scoped to the current Git repository by default. Use `--repo`, `--all-repos`, `--absolute-paths`, `--limit`, `--md`, or `--json` as needed.
 
 All formats use only already-redacted database fields. Reporting never rereads files
 and does not make network calls.
@@ -215,20 +215,56 @@ Failed, blocked, or rejected actions
 
 ### Report
 
-```markdown
-# Secuarden Local Accountability Report
+Reports are repository-scoped by default, so activity from unrelated projects in
+the global database is not mixed together. Repository identities normalize common
+SSH and HTTPS forms of the same Git remote without making a network request.
 
-Period: 2026-07-18T08:00:00Z to 2026-07-19T08:00:00Z
+```bash
+# Current Git repository, terminal lists limited to 10 entries each
+secuarden report
 
-## Overall totals
+# Select by local path, remote, or owner/repository identity
+secuarden report --repo ../verifyflow-demo
+secuarden report --repo git@github.com:example/verifyflow-demo.git
+secuarden report --repo example/verifyflow-demo
 
-- 3 sessions · 52 actions
-- 14 files read · 6 files changed
-- 21 commands · 2 MCP calls · 1 sensitive access
+# Cross-repository report, grouped by canonical repository identity
+secuarden report --all-repos
 
-## Sensitive access
+# Restore full absolute paths or change the terminal list limit
+secuarden report --absolute-paths --limit 25
+```
 
-- [SENSITIVE] 2026-07-19T07:14:00Z · .env.local · session a1b2c3
+Paths inside the selected repository are rendered relative to its verified Git
+root. External reads and changes remain separate, and home-directory paths are
+abbreviated with `~`. With `--all-repos`, internal paths are prefixed with the
+repository name. Existing JSON path fields retain their original stored values;
+additive repository/external collections and `repository`, `display_path`, and
+`external` metadata describe classification and presentation.
+
+```text
+Secuarden accountability report
+Repository: example/verifyflow-demo
+Period: Last 24 hours · 18 Jul 13:52 – 19 Jul 13:52 AEST
+
+Summary
+  1 session · 16 actions
+  1 repository file changed · 1 external file changed
+  4 commands succeeded · 0 failed
+  1 sensitive-path access
+
+Agent activity
+  Claude Code · 1 session · 16 actions
+
+Files changed
+  verifyflow/api.py
+
+External activity
+  Read     ~/Library/Application Support/Code/User/settings.json
+  Changed  ~/other-project/generated.py
+
+Sensitive-path access
+  [SENSITIVE] 19 Jul 10:52 AEST · .env.example · session a1b2c3
 ```
 
 Behind the scenes, each event remains a structured record in SQLite:

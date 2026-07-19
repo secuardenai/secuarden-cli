@@ -13,12 +13,14 @@ import (
 
 // EventFilter selects captured events. Filters are combined with AND.
 type EventFilter struct {
-	Limit      int
-	ActionType string
-	SessionID  string
-	Sensitive  bool
-	Since      time.Time
-	Until      time.Time
+	Limit            int
+	ActionType       string
+	SessionID        string
+	Sensitive        bool
+	Since            time.Time
+	Until            time.Time
+	SessionIDs       []string
+	RestrictSessions bool
 }
 
 // StoredEvent is the privacy-safe event representation returned by activity
@@ -51,6 +53,9 @@ type StoredEvent struct {
 // QueryEvents returns the most recent matching events in chronological order.
 // Timestamp, session, sequence, and ID ordering makes results deterministic.
 func (d *DB) QueryEvents(filter EventFilter) ([]StoredEvent, error) {
+	if filter.RestrictSessions && len(filter.SessionIDs) == 0 {
+		return []StoredEvent{}, nil
+	}
 	where := []string{"1 = 1"}
 	args := make([]interface{}, 0, 5)
 	if filter.ActionType != "" {
@@ -60,6 +65,14 @@ func (d *DB) QueryEvents(filter EventFilter) ([]StoredEvent, error) {
 	if filter.SessionID != "" {
 		where = append(where, "session_id = ?")
 		args = append(args, filter.SessionID)
+	}
+	if filter.RestrictSessions {
+		placeholders := make([]string, len(filter.SessionIDs))
+		for i, sessionID := range filter.SessionIDs {
+			placeholders[i] = "?"
+			args = append(args, sessionID)
+		}
+		where = append(where, "session_id IN ("+strings.Join(placeholders, ",")+")")
 	}
 	if filter.Sensitive {
 		where = append(where, "is_sensitive = 1")
@@ -86,10 +99,14 @@ func (d *DB) QueryEvents(filter EventFilter) ([]StoredEvent, error) {
 		       COALESCE(command, ''), exit_code,
 		       COALESCE(command_output_preview, ''),
 		       COALESCE(mcp_server, ''), COALESCE(mcp_tool, ''), duration_ms,
-		       COALESCE(working_directory, ''), COALESCE(git_branch, ''),
+		       COALESCE(report_working_directory, ''), COALESCE(git_branch, ''),
 		       COALESCE(developer_email, '')
 		FROM (
-			SELECT * FROM events WHERE ` + strings.Join(where, " AND ") + `
+			SELECT events.*,
+			       COALESCE(events.working_directory,
+			           (SELECT sessions.working_directory FROM sessions WHERE sessions.id = events.session_id),
+			           '') AS report_working_directory
+			FROM events WHERE ` + strings.Join(where, " AND ") + `
 			ORDER BY julianday(timestamp) DESC, session_id DESC, sequence DESC, id DESC
 			LIMIT ?
 		)
@@ -198,13 +215,17 @@ func mcpName(e StoredEvent) string {
 
 // ActivityCounts contains aggregate counts for a period or session.
 type ActivityCounts struct {
-	Sessions          int `json:"sessions"`
-	Actions           int `json:"actions"`
-	FilesRead         int `json:"files_read"`
-	FilesChanged      int `json:"files_changed"`
-	Commands          int `json:"commands"`
-	MCPCalls          int `json:"mcp_calls"`
-	SensitiveAccesses int `json:"sensitive_accesses"`
+	Sessions               int `json:"sessions"`
+	Actions                int `json:"actions"`
+	FilesRead              int `json:"files_read"`
+	FilesChanged           int `json:"files_changed"`
+	RepositoryFilesRead    int `json:"repository_files_read"`
+	RepositoryFilesChanged int `json:"repository_files_changed"`
+	ExternalFilesRead      int `json:"external_files_read"`
+	ExternalFilesChanged   int `json:"external_files_changed"`
+	Commands               int `json:"commands"`
+	MCPCalls               int `json:"mcp_calls"`
+	SensitiveAccesses      int `json:"sensitive_accesses"`
 }
 
 // RecentSession is a compact session summary for status.
@@ -441,30 +462,85 @@ func sortedKeys(values map[string]struct{}) []string {
 
 // NamedCount is a deterministic named aggregate.
 type NamedCount struct {
-	Name  string `json:"name"`
-	Count int    `json:"count"`
+	Name     string `json:"name"`
+	Count    int    `json:"count"`
+	Sessions int    `json:"sessions,omitempty"`
 }
 
 // AccountabilityReport is an aggregate over an explicit local time window.
 type AccountabilityReport struct {
-	Since             string             `json:"since"`
-	Until             string             `json:"until"`
-	Totals            ActivityCounts     `json:"totals"`
-	Agents            []NamedCount       `json:"agents"`
-	FilesRead         []string           `json:"files_read"`
-	FilesChanged      []string           `json:"files_changed"`
-	SensitiveAccesses []StoredEvent      `json:"sensitive_accesses"`
-	Attention         []AttentionFinding `json:"attention"`
-	CommandExecutions int                `json:"command_executions"`
-	CommandFailures   int                `json:"command_failures"`
-	MCPActivity       []NamedCount       `json:"mcp_activity"`
-	Developers        []NamedCount       `json:"developers"`
-	Branches          []NamedCount       `json:"branches"`
+	Since                  string               `json:"since"`
+	Until                  string               `json:"until"`
+	Totals                 ActivityCounts       `json:"totals"`
+	Agents                 []NamedCount         `json:"agents"`
+	FilesRead              []string             `json:"files_read"`
+	FilesChanged           []string             `json:"files_changed"`
+	SensitiveAccesses      []StoredEvent        `json:"sensitive_accesses"`
+	Attention              []AttentionFinding   `json:"attention"`
+	CommandExecutions      int                  `json:"command_executions"`
+	CommandFailures        int                  `json:"command_failures"`
+	MCPActivity            []NamedCount         `json:"mcp_activity"`
+	Developers             []NamedCount         `json:"developers"`
+	Branches               []NamedCount         `json:"branches"`
+	Repository             string               `json:"repository,omitempty"`
+	FileEntries            []ReportPath         `json:"file_entries,omitempty"`
+	RepositoryGroups       []RepositoryReport   `json:"repository_groups,omitempty"`
+	PathEvidence           []ReportPathEvidence `json:"-"`
+	RepositoryFilesRead    []string             `json:"repository_files_read"`
+	ExternalFilesRead      []string             `json:"external_files_read"`
+	RepositoryFilesChanged []string             `json:"repository_files_changed"`
+	ExternalFilesChanged   []string             `json:"external_files_changed"`
+}
+
+// ReportPathEvidence retains the captured working directory needed to resolve
+// relative stored paths. It is collection metadata, not a JSON compatibility field.
+type ReportPathEvidence struct {
+	FilePath         string
+	WorkingDirectory string
+	Kind             string
+}
+
+// ReportPath adds display metadata without changing existing JSON path arrays.
+type ReportPath struct {
+	FilePath         string `json:"file_path"`
+	DisplayPath      string `json:"display_path"`
+	Repository       string `json:"repository"`
+	External         bool   `json:"external"`
+	Kind             string `json:"kind"`
+	WorkingDirectory string `json:"-"`
+	ResolvedPath     string `json:"-"`
+}
+
+// RepositoryReport is one repository group in an all-repositories report.
+type RepositoryReport struct {
+	Repository             string             `json:"repository"`
+	Name                   string             `json:"name"`
+	Totals                 ActivityCounts     `json:"totals"`
+	Agents                 []NamedCount       `json:"agents"`
+	FilesRead              []string           `json:"files_read"`
+	FilesChanged           []string           `json:"files_changed"`
+	FileEntries            []ReportPath       `json:"file_entries"`
+	Attention              []AttentionFinding `json:"attention"`
+	SensitiveAccesses      []StoredEvent      `json:"sensitive_accesses"`
+	CommandExecutions      int                `json:"command_executions"`
+	CommandFailures        int                `json:"command_failures"`
+	MCPActivity            []NamedCount       `json:"mcp_activity"`
+	Developers             []NamedCount       `json:"developers"`
+	Branches               []NamedCount       `json:"branches"`
+	RepositoryFilesRead    []string           `json:"repository_files_read"`
+	ExternalFilesRead      []string           `json:"external_files_read"`
+	RepositoryFilesChanged []string           `json:"repository_files_changed"`
+	ExternalFilesChanged   []string           `json:"external_files_changed"`
 }
 
 // GetAccountabilityReport aggregates already-redacted captured data.
 func (d *DB) GetAccountabilityReport(since, until time.Time) (*AccountabilityReport, error) {
-	events, err := d.QueryEvents(EventFilter{Since: since, Until: until, Limit: 1000000})
+	return d.GetAccountabilityReportForSessions(since, until, nil, false)
+}
+
+// GetAccountabilityReportForSessions aggregates a selected set of sessions.
+func (d *DB) GetAccountabilityReportForSessions(since, until time.Time, sessionIDs []string, restrict bool) (*AccountabilityReport, error) {
+	events, err := d.QueryEvents(EventFilter{Since: since, Until: until, Limit: 1000000, SessionIDs: sessionIDs, RestrictSessions: restrict})
 	if err != nil {
 		return nil, err
 	}
@@ -473,18 +549,29 @@ func (d *DB) GetAccountabilityReport(since, until time.Time) (*AccountabilityRep
 		Agents: make([]NamedCount, 0), FilesRead: make([]string, 0), FilesChanged: make([]string, 0),
 		SensitiveAccesses: make([]StoredEvent, 0), Attention: make([]AttentionFinding, 0),
 		MCPActivity: make([]NamedCount, 0), Developers: make([]NamedCount, 0), Branches: make([]NamedCount, 0),
+		PathEvidence: make([]ReportPathEvidence, 0),
 	}
 	sessions, read, changed := map[string]struct{}{}, map[string]struct{}{}, map[string]struct{}{}
 	agents, mcps, developers, branches := map[string]int{}, map[string]int{}, map[string]int{}, map[string]int{}
+	agentSessions := map[string]map[string]struct{}{}
+	pathEvidence := map[string]ReportPathEvidence{}
 	for _, e := range events {
 		r.Totals.Actions++
 		sessions[e.SessionID] = struct{}{}
 		agents[e.AgentName]++
+		if agentSessions[e.AgentName] == nil {
+			agentSessions[e.AgentName] = map[string]struct{}{}
+		}
+		agentSessions[e.AgentName][e.SessionID] = struct{}{}
 		if e.ActionType == "file_read" && e.FilePath != "" {
 			read[e.FilePath] = struct{}{}
+			key := "read\x00" + e.FilePath + "\x00" + e.WorkingDirectory
+			pathEvidence[key] = ReportPathEvidence{FilePath: e.FilePath, WorkingDirectory: e.WorkingDirectory, Kind: "read"}
 		}
 		if (e.ActionType == "file_write" || e.ActionType == "file_delete") && e.FilePath != "" {
 			changed[e.FilePath] = struct{}{}
+			key := "changed\x00" + e.FilePath + "\x00" + e.WorkingDirectory
+			pathEvidence[key] = ReportPathEvidence{FilePath: e.FilePath, WorkingDirectory: e.WorkingDirectory, Kind: "changed"}
 		}
 		if e.ActionType == "command_exec" && e.HookPhase != "pre" {
 			r.Totals.Commands++
@@ -514,8 +601,44 @@ func (d *DB) GetAccountabilityReport(since, until time.Time) (*AccountabilityRep
 	r.Totals.FilesChanged = len(changed)
 	r.FilesRead, r.FilesChanged = sortedKeys(read), sortedKeys(changed)
 	r.Agents, r.MCPActivity = namedCounts(agents), namedCounts(mcps)
+	for i := range r.Agents {
+		r.Agents[i].Sessions = len(agentSessions[r.Agents[i].Name])
+	}
 	r.Developers, r.Branches = namedCounts(developers), namedCounts(branches)
+	evidenceKeys := make([]string, 0, len(pathEvidence))
+	for key := range pathEvidence {
+		evidenceKeys = append(evidenceKeys, key)
+	}
+	sort.Strings(evidenceKeys)
+	for _, key := range evidenceKeys {
+		r.PathEvidence = append(r.PathEvidence, pathEvidence[key])
+	}
 	return r, nil
+}
+
+// SessionRepositoryRef contains repository evidence already stored for a session.
+type SessionRepositoryRef struct {
+	SessionID        string
+	GitRepoURL       string
+	WorkingDirectory string
+}
+
+// ListSessionRepositories returns deterministic stored repository evidence.
+func (d *DB) ListSessionRepositories() ([]SessionRepositoryRef, error) {
+	rows, err := d.db.Query(`SELECT id, COALESCE(git_repo_url, ''), COALESCE(working_directory, '') FROM sessions ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("list session repositories: %w", err)
+	}
+	defer rows.Close()
+	result := make([]SessionRepositoryRef, 0)
+	for rows.Next() {
+		var ref SessionRepositoryRef
+		if err := rows.Scan(&ref.SessionID, &ref.GitRepoURL, &ref.WorkingDirectory); err != nil {
+			return nil, fmt.Errorf("scan session repository: %w", err)
+		}
+		result = append(result, ref)
+	}
+	return result, rows.Err()
 }
 
 func namedCounts(values map[string]int) []NamedCount {
@@ -528,7 +651,7 @@ func namedCounts(values map[string]int) []NamedCount {
 	sort.Strings(keys)
 	result := make([]NamedCount, 0, len(keys))
 	for _, key := range keys {
-		result = append(result, NamedCount{key, values[key]})
+		result = append(result, NamedCount{Name: key, Count: values[key]})
 	}
 	return result
 }

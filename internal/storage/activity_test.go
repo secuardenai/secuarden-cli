@@ -140,6 +140,26 @@ func TestAccountabilityReportAndEmptyDatabase(t *testing.T) {
 	}
 }
 
+func TestReportPathEvidenceFallsBackToSessionWorkingDirectory(t *testing.T) {
+	db, _ := tempDB(t)
+	if err := db.EnsureSession("relative-session", "claude-code", "/repo/nested"); err != nil {
+		t.Fatal(err)
+	}
+	writeActivityEvent(t, db, events.Event{
+		ID: "relative-event", SessionID: "relative-session", Sequence: 1,
+		Timestamp: "2026-07-19T08:00:00Z", HookPhase: "post",
+		ActionType: "file_write", FilePath: "src/file.go",
+	})
+	since := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC)
+	report, err := db.GetAccountabilityReportForSessions(since, since.Add(24*time.Hour), []string{"relative-session"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.PathEvidence) != 1 || report.PathEvidence[0].WorkingDirectory != "/repo/nested" {
+		t.Fatalf("session working-directory fallback missing: %#v", report.PathEvidence)
+	}
+}
+
 func TestOpenExistingSchemaDatabase(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "existing.db")
 	raw, err := sql.Open("sqlite", path)
