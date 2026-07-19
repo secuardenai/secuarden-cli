@@ -8,6 +8,10 @@ Git records what code changed. Secuarden records what Claude Code actually did a
 - **Optional SaaS feedback** — API-key-enabled sync sends redacted summaries for branch-level risk feedback.
 - **Shared accountability** — gives developers, security teams, and platform engineers a common evidence record.
 
+> This demo uses the actual Secuarden binary to replay sanitized Claude Code hook fixtures in an isolated temporary HOME. It is not a live agent session and makes no SaaS call.
+
+![Secuarden CLI local accountability demo](docs/demo/secuarden-terminal-demo.gif)
+
 ```text
 $ secuarden init
 ✓ Claude Code detected
