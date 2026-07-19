@@ -1,42 +1,35 @@
-# secuarden-cli
+# The governance flight recorder for AI-written code
 
-**Know exactly what your AI coding agent did — every file read, every command run, every secret touched. Get immediate risk feedback when a session ends.**
+Git records what code changed. Secuarden records what Claude Code actually did at hook time—files read and written, commands, MCP calls, sensitive-path access, and the active developer identity—so developers, security teams, and platform engineers can investigate and govern AI-assisted work using captured evidence.
 
-<!-- TODO: Replace with actual terminal recording -->
-<!-- ![secuarden demo](docs/demo.gif) -->
+- **Authoritative hook-time capture** — records Claude Code actions as they occur, preserving operational detail that Git history does not contain.
+- **Local-first by default** — without an API key, redacted events remain in `~/.secuarden/secuarden.db`; no SaaS sync is enabled.
+- **Investigation-ready evidence** — inspect capture health, raw events, individual sessions, and local accountability reports from the CLI.
+- **Optional SaaS feedback** — API-key-enabled sync sends redacted summaries for branch-level risk feedback.
+- **Shared accountability** — gives developers, security teams, and platform engineers a common evidence record.
 
-```bash
-$ secuarden init --api-key sec_xxxx
+```text
+$ secuarden init
 ✓ Claude Code detected
-✓ SaaS sync enabled — session feedback will appear in terminal
+✓ Local-only mode (pass --api-key to enable SaaS sync)
 ✓ Hooks installed (PreToolUse, PostToolUse, SessionStart, SessionEnd)
 ✓ Database created at ~/.secuarden/secuarden.db
-✓ Developer identity: alice <alice@company.com>
 
-# ... use Claude Code normally across multiple sessions ...
+$ secuarden status
+Capture: Active · Claude Code
+Database: ~/.secuarden/secuarden.db · 76 KB
+Sync: Local only
 
+# Optional: enable SaaS sync and branch-level risk feedback
+$ secuarden init --api-key sec_xxxx
+✓ SaaS sync enabled — session feedback will appear in terminal
+
+# After a Claude Code session, when synced evidence requires review:
 ── Secuarden ──────────────────────────────────────
 ⚑ REVIEW REQUIRED — 'feat/auth-refactor' (2 session(s), high risk).
   Triggered: AI-authored authentication changes. Assign AppSec reviewer.
 ───────────────────────────────────────────────────
 ```
-
-## Why this exists
-
-AI coding agents read your files, run shell commands, access environment variables, and modify your codebase — often 50+ actions per session. When your SOC 2 auditor asks *"who authorized this change and what did the AI actually do?"* nobody can answer. Git logs show code was committed. They don't show the agent read your `.env`, executed 47 shell commands, and rewrote 12 files in 90 seconds.
-
-secuarden-cli is a passive, zero-config capture agent that records every action your AI coding agent takes. No dashboards, no analytics, no opinions — just a tamper-aware local ledger of what actually happened, with secrets automatically scrubbed before storage.
-
-## Features
-
-- **One-command install** — `secuarden init` detects your agent, installs hooks, creates the database. Add `--api-key` once to enable SaaS sync.
-- **Captures everything** — file reads, file writes, shell commands, MCP tool calls, subagent spawns. Every action gets a structured event with timestamp, developer identity, and session context.
-- **Immediate risk feedback** — when SaaS sync is enabled, risk is evaluated across the full branch history (all sessions, not just the last one) and printed in the terminal the moment a session ends.
-- **AI Change Set tracking** — multiple sessions on the same branch are automatically grouped into one provenance unit. Risk accumulates and is re-evaluated after every session, so you see the full picture before opening a PR.
-- **Secrets never hit disk** — two-layer privacy: sensitive file detection (`.env`, `*.pem`, `.ssh/*`) suppresses all content. Content redaction scrubs API keys, tokens, JWTs, and credentials from commands and output. What gets stored is the action, not the secret.
-- **Structured event schema** — every event follows a [documented JSON schema](schema/secuarden-event.schema.json) designed for downstream compliance tooling, SIEM ingestion, or your own analysis.
-- **Developer identity** — each session records who ran it (git config + OS user), not just what happened.
-- **Local-first, opt-in sync** — all data stays in SQLite by default. SaaS sync and feedback require an explicit `--api-key`.
 
 ## Quickstart
 
@@ -297,7 +290,7 @@ Behind the scenes, each event remains a structured record in SQLite:
 Your engineering team adopted AI coding tools. Your auditor is going to ask about it. secuarden-cli gives you the raw evidence trail — what the agent did, which files it touched, which commands it ran — so you're not scrambling when CC8.1 comes up in your next SOC 2 audit.
 
 ### For platform engineering teams
-You rolled out Claude Code or Cursor to 50 engineers. You have no visibility into what these agents are doing across your codebase. secuarden-cli gives you structured, queryable data on agent behavior without slowing anyone down.
+You rolled out Claude Code to 50 engineers. You have no visibility into what the agent is doing across your codebase. secuarden-cli gives you structured, queryable data on agent behavior without slowing anyone down.
 
 ### For individual developers
 You prompted the agent to "fix the login bug" and it touched 15 files. Which ones? Did it read your `.env`? Did it run anything unexpected? `secuarden status` tells you in 2 seconds.
