@@ -7,6 +7,8 @@ Git records what code changed. Secuarden records what Claude Code actually did a
 - **Investigation-ready evidence** — inspect capture health, raw events, individual sessions, and local accountability reports from the CLI.
 - **Optional SaaS feedback** — API-key-enabled sync sends redacted summaries for branch-level risk feedback.
 - **Shared accountability** — gives developers, security teams, and platform engineers a common evidence record.
+- **Tamper-evident provenance** — every newly captured event is linked into a per-session SHA-256 chain that can be verified offline.
+- **CI-ready governance** — export an AI Bill of Materials and fail builds on transparent, deterministic risk thresholds.
 
 > This demo uses the actual Secuarden binary to replay sanitized Claude Code hook fixtures in an isolated temporary HOME. It is not a live agent session and makes no SaaS call.
 
@@ -59,6 +61,9 @@ secuarden status
 secuarden events --last 20
 secuarden session <session-id>
 secuarden report --since 24h --md
+secuarden verify
+secuarden bom --since 30d > secuarden-ai-bom.json
+secuarden gate --since 24h --fail-on high
 ```
 
 ### With SaaS sync (recommended for teams)
@@ -140,9 +145,34 @@ and reporting remain separate:
 - `secuarden events` — chronological raw capture events. Combine `--last`, `--action`, `--session`, and `--sensitive`; add `--json` for scripts.
 - `secuarden session <id>` — files, commands and outcomes, MCP calls, sensitive accesses, and failures for one session; supports `--json`.
 - `secuarden report` — a 24-hour accountability report scoped to the current Git repository by default. Use `--repo`, `--all-repos`, `--absolute-paths`, `--limit`, `--md`, or `--json` as needed.
+- `secuarden verify` — recompute the per-session SHA-256 chains and identify the exact session/sequence of modified evidence.
+- `secuarden bom` — export file-write provenance, agent/model/developer context, risk reasons, content hashes, and integrity status as an AI-BOM JSON document.
+- `secuarden gate` — return a non-zero exit code when AI-authored file changes meet a configurable deterministic risk threshold.
 
 All formats use only already-redacted database fields. Reporting never rereads files
 and does not make network calls.
+
+### Provenance integrity and CI gate
+
+New events are chained using their capture identity, ordering, action metadata,
+raw-input digest, and the preceding event hash. Verification and export operate
+entirely on the local redacted database.
+
+```bash
+# Verify evidence before an audit or export
+secuarden verify
+
+# Produce a portable AI Bill of Materials
+secuarden bom --since 30d > secuarden-ai-bom.json
+
+# GitHub Actions, GitLab CI, or any shell-based pipeline
+secuarden gate --since 24h --fail-on high
+```
+
+Risk scoring is deliberately explainable and deterministic. It classifies paths
+associated with identity, payments, secrets, cryptography, infrastructure, and
+schemas; test and documentation paths receive a lower score. It is a governance
+signal, not a SAST or license scanner.
 
 ### Status
 
