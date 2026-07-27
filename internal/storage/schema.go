@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS events (
     developer_email TEXT,
     intent_summary TEXT,
     raw_event_hash TEXT,
+    previous_event_hash TEXT,
+    event_hash TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (session_id) REFERENCES sessions(id)
 );
@@ -54,6 +56,7 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id);
 CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_events_action ON events(action_type);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_events_hash ON events(event_hash) WHERE event_hash IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS metadata (
     key TEXT PRIMARY KEY,

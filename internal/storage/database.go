@@ -1,15 +1,18 @@
 package storage
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
 	"github.com/secuardenai/secuarden-cli/internal/events"
+	_ "modernc.org/sqlite"
 )
 
 // DB wraps the SQLite connection.
@@ -55,8 +58,26 @@ func Open(path string) (*DB, error) {
 		db.Close()
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
+	// Additive migrations for databases created by earlier CLI releases.
+	for _, migration := range []string{
+		"ALTER TABLE events ADD COLUMN previous_event_hash TEXT",
+		"ALTER TABLE events ADD COLUMN event_hash TEXT",
+	} {
+		if _, err := db.Exec(migration); err != nil && !isDuplicateColumnError(err) {
+			db.Close()
+			return nil, fmt.Errorf("migrate schema: %w", err)
+		}
+	}
+	if _, err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_events_hash ON events(event_hash) WHERE event_hash IS NOT NULL"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("create event hash index: %w", err)
+	}
 
 	return &DB{db: db}, nil
+}
+
+func isDuplicateColumnError(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "duplicate column")
 }
 
 // Close closes the database connection.
@@ -152,7 +173,16 @@ func (d *DB) WriteEvent(e *events.Event) error {
 		sensitive = 1
 	}
 
-	_, err = d.db.Exec(`
+	tx, err := d.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin event write: %w", err)
+	}
+	defer tx.Rollback()
+	var previousHash string
+	_ = tx.QueryRow(`SELECT COALESCE(event_hash, '') FROM events
+		WHERE session_id = ? ORDER BY sequence DESC LIMIT 1`, e.SessionID).Scan(&previousHash)
+	eventHash := computeEventHash(previousHash, e)
+	_, err = tx.Exec(`
 		INSERT INTO events (
 			id, session_id, sequence, timestamp,
 			source, source_version,
@@ -164,7 +194,8 @@ func (d *DB) WriteEvent(e *events.Event) error {
 			mcp_server, mcp_tool,
 			duration_ms,
 			working_directory, git_branch,
-			developer_email, intent_summary, raw_event_hash
+			developer_email, intent_summary, raw_event_hash,
+			previous_event_hash, event_hash
 		) VALUES (
 			?,?,?,?,
 			?,?,
@@ -176,7 +207,7 @@ func (d *DB) WriteEvent(e *events.Event) error {
 			?,?,
 			?,
 			?,?,
-			?,?,?
+			?,?,?,?,?
 		)`,
 		e.ID, e.SessionID, e.Sequence, e.Timestamp,
 		e.Source, e.SourceVersion,
@@ -189,17 +220,117 @@ func (d *DB) WriteEvent(e *events.Event) error {
 		durationMS,
 		nullStr(e.WorkingDirectory), nullStr(e.GitBranch),
 		nullStr(e.DeveloperEmail), nullStr(e.IntentSummary), nullStr(e.RawEventHash),
+		nullStr(previousHash), eventHash,
 	)
 	if err != nil {
 		return fmt.Errorf("insert event: %w", err)
 	}
 
 	// Keep event_count in sessions up to date
-	_, _ = d.db.Exec(
+	_, _ = tx.Exec(
 		"UPDATE sessions SET event_count = event_count + 1 WHERE id = ?",
 		e.SessionID,
 	)
-	return nil
+	return tx.Commit()
+}
+
+func computeEventHash(previous string, e *events.Event) string {
+	payload := strings.Join([]string{
+		previous, e.ID, e.SessionID, strconv.Itoa(e.Sequence), e.Timestamp,
+		e.AgentName, e.HookPhase, e.ActionType, e.RawEventHash,
+	}, "\x00")
+	sum := sha256.Sum256([]byte(payload))
+	return fmt.Sprintf("%x", sum[:])
+}
+
+// IntegrityResult describes verification of the append-only event hash chains.
+type IntegrityResult struct {
+	Valid           bool     `json:"valid"`
+	EventsChecked   int      `json:"events_checked"`
+	SessionsChecked int      `json:"sessions_checked"`
+	LegacyEvents    int      `json:"legacy_events"`
+	Failures        []string `json:"failures,omitempty"`
+}
+
+type ProvenanceRecord struct {
+	EventID     string `json:"event_id"`
+	SessionID   string `json:"session_id"`
+	Timestamp   string `json:"timestamp"`
+	FilePath    string `json:"file_path"`
+	ContentHash string `json:"content_hash,omitempty"`
+	Agent       string `json:"agent"`
+	Model       string `json:"model,omitempty"`
+	Developer   string `json:"developer,omitempty"`
+	Repository  string `json:"repository,omitempty"`
+	Branch      string `json:"branch,omitempty"`
+	IsSensitive bool   `json:"is_sensitive"`
+	EventHash   string `json:"event_hash,omitempty"`
+}
+
+func (d *DB) ListWriteProvenance(since time.Time) ([]ProvenanceRecord, error) {
+	rows, err := d.db.Query(`SELECT e.id, e.session_id, e.timestamp,
+		COALESCE(e.file_path, ''), COALESCE(e.content_hash, ''),
+		e.agent_name, COALESCE(s.model, ''), COALESCE(s.developer_email, ''),
+		COALESCE(s.git_repo_url, ''), COALESCE(s.git_branch, ''),
+		e.is_sensitive, COALESCE(e.event_hash, '')
+		FROM events e JOIN sessions s ON s.id=e.session_id
+		WHERE e.action_type='file_write' AND e.timestamp >= ?
+		ORDER BY e.timestamp`, since.UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var records []ProvenanceRecord
+	for rows.Next() {
+		var r ProvenanceRecord
+		var sensitive int
+		if err := rows.Scan(&r.EventID, &r.SessionID, &r.Timestamp, &r.FilePath,
+			&r.ContentHash, &r.Agent, &r.Model, &r.Developer, &r.Repository,
+			&r.Branch, &sensitive, &r.EventHash); err != nil {
+			return nil, err
+		}
+		r.IsSensitive = sensitive == 1
+		records = append(records, r)
+	}
+	return records, rows.Err()
+}
+
+// VerifyIntegrity recomputes every session chain without reading source files.
+func (d *DB) VerifyIntegrity() (*IntegrityResult, error) {
+	rows, err := d.db.Query(`SELECT id, session_id, sequence, timestamp, agent_name,
+		hook_phase, action_type, COALESCE(raw_event_hash, ''),
+		COALESCE(previous_event_hash, ''), COALESCE(event_hash, '')
+		FROM events ORDER BY session_id, sequence`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := &IntegrityResult{Valid: true}
+	previous := map[string]string{}
+	sessions := map[string]bool{}
+	for rows.Next() {
+		var e events.Event
+		var storedPrevious, storedHash string
+		if err := rows.Scan(&e.ID, &e.SessionID, &e.Sequence, &e.Timestamp, &e.AgentName,
+			&e.HookPhase, &e.ActionType, &e.RawEventHash, &storedPrevious, &storedHash); err != nil {
+			return nil, err
+		}
+		result.EventsChecked++
+		sessions[e.SessionID] = true
+		if storedHash == "" {
+			result.LegacyEvents++
+			continue
+		}
+		expectedPrevious := previous[e.SessionID]
+		expectedHash := computeEventHash(expectedPrevious, &e)
+		if storedPrevious != expectedPrevious || storedHash != expectedHash {
+			result.Valid = false
+			result.Failures = append(result.Failures, e.SessionID+":"+strconv.Itoa(e.Sequence))
+		}
+		previous[e.SessionID] = storedHash
+	}
+	result.SessionsChecked = len(sessions)
+	return result, rows.Err()
 }
 
 // SetMeta stores a metadata key-value pair.

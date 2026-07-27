@@ -27,4 +27,7 @@ func init() {
 	rootCmd.AddCommand(uninstallCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(hookCmd)
+	rootCmd.AddCommand(verifyCmd)
+	rootCmd.AddCommand(bomCmd)
+	rootCmd.AddCommand(gateCmd)
 }

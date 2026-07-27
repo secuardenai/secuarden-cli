@@ -126,7 +126,7 @@ func TestGetStats(t *testing.T) {
 			Schema: events.SchemaURL, SchemaVersion: events.SchemaVersion,
 			ID: "evt-" + string(rune('0'+i)), SessionID: "sess-1", Sequence: i,
 			Timestamp: "2026-05-27T10:00:0" + string(rune('0'+i)) + "Z",
-			Source: "secuarden-cli", AgentName: "claude-code",
+			Source:    "secuarden-cli", AgentName: "claude-code",
 			HookPhase: events.HookPhasePre, ActionType: events.ActionFileRead,
 			IsSensitive: false,
 		}
@@ -150,5 +150,35 @@ func TestEndSession(t *testing.T) {
 	_ = db.EnsureSession("sess-1", "claude-code", "/tmp")
 	if err := db.EndSession("sess-1"); err != nil {
 		t.Fatalf("EndSession: %v", err)
+	}
+}
+
+func TestVerifyIntegrityDetectsTampering(t *testing.T) {
+	db, _ := tempDB(t)
+	_ = db.EnsureSession("sess-chain", "claude-code", "/tmp")
+	for i := 1; i <= 2; i++ {
+		e := &events.Event{
+			ID: "chain-" + string(rune('0'+i)), SessionID: "sess-chain", Sequence: i,
+			Timestamp: "2026-05-27T10:00:0" + string(rune('0'+i)) + "Z",
+			AgentName: "claude-code", HookPhase: events.HookPhasePost,
+			ActionType: events.ActionFileWrite, RawEventHash: "raw",
+		}
+		if err := db.WriteEvent(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, err := db.VerifyIntegrity()
+	if err != nil || !result.Valid || result.EventsChecked != 2 {
+		t.Fatalf("expected valid two-event chain, result=%+v err=%v", result, err)
+	}
+	if _, err := db.db.Exec("UPDATE events SET action_type='command_exec' WHERE id='chain-1'"); err != nil {
+		t.Fatal(err)
+	}
+	result, err = db.VerifyIntegrity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Valid || len(result.Failures) == 0 {
+		t.Fatalf("expected tampering to break the chain: %+v", result)
 	}
 }
