@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/secuardenai/secuarden-cli/internal/events"
 )
 
 // EventFilter selects captured events. Filters are combined with AND.
@@ -26,10 +28,13 @@ type EventFilter struct {
 // StoredEvent is the privacy-safe event representation returned by activity
 // queries. Every text field comes directly from the already-redacted database.
 type StoredEvent struct {
+	Schema               string   `json:"$schema"`
+	SchemaVersion        string   `json:"schema_version"`
 	ID                   string   `json:"id"`
 	SessionID            string   `json:"session_id"`
 	Sequence             int      `json:"sequence"`
 	Timestamp            string   `json:"timestamp"`
+	Source               string   `json:"source"`
 	AgentName            string   `json:"agent_name"`
 	HookPhase            string   `json:"hook_phase"`
 	ActionType           string   `json:"action_type"`
@@ -92,7 +97,7 @@ func (d *DB) QueryEvents(filter EventFilter) ([]StoredEvent, error) {
 	}
 	args = append(args, limit)
 	query := `
-		SELECT id, session_id, sequence, timestamp, agent_name, hook_phase,
+		SELECT id, session_id, sequence, timestamp, source, agent_name, hook_phase,
 		       action_type, COALESCE(tool_name, ''), COALESCE(result_status, ''),
 		       is_sensitive, COALESCE(redacted_fields, '[]'),
 		       COALESCE(file_path, ''), COALESCE(diff_stats, ''),
@@ -126,7 +131,7 @@ func (d *DB) QueryEvents(filter EventFilter) ([]StoredEvent, error) {
 		var exitCode sql.NullInt64
 		var duration sql.NullInt64
 		if err := rows.Scan(
-			&e.ID, &e.SessionID, &e.Sequence, &e.Timestamp, &e.AgentName,
+			&e.ID, &e.SessionID, &e.Sequence, &e.Timestamp, &e.Source, &e.AgentName,
 			&e.HookPhase, &e.ActionType, &e.ToolName, &e.ResultStatus,
 			&sensitive, &redacted, &e.FilePath, &e.DiffStats, &e.Command,
 			&exitCode, &e.CommandOutputPreview, &e.MCPServer, &e.MCPTool,
@@ -134,6 +139,8 @@ func (d *DB) QueryEvents(filter EventFilter) ([]StoredEvent, error) {
 		); err != nil {
 			return nil, fmt.Errorf("scan event: %w", err)
 		}
+		e.Schema = events.SchemaURL
+		e.SchemaVersion = events.SchemaVersion
 		e.IsSensitive = sensitive == 1
 		e.RedactedFields = make([]string, 0)
 		_ = json.Unmarshal([]byte(redacted), &e.RedactedFields)

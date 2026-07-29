@@ -298,6 +298,7 @@ Behind the scenes, each event remains a structured record in SQLite:
 
 ```json
 {
+  "$schema": "https://schema.secuarden.ai/v1/event.schema.json",
   "schema_version": "1.0.0",
   "id": "a1b2c3d4-...",
   "session_id": "e5f6a7b8-...",
