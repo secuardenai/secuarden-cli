@@ -49,6 +49,36 @@ func TestJSONOutputValidityAndEmptyArray(t *testing.T) {
 	}
 }
 
+func TestJSONOutputIncludesRequiredSchemaMetadata(t *testing.T) {
+	var out bytes.Buffer
+	input := []storage.StoredEvent{{
+		Schema:        events.SchemaURL,
+		SchemaVersion: events.SchemaVersion,
+		ID:            "a1b2c3d4",
+		Source:        "secuarden-cli",
+	}}
+	if err := writeJSON(&out, input); err != nil {
+		t.Fatal(err)
+	}
+
+	var decoded []map[string]interface{}
+	if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+		t.Fatalf("invalid JSON %q: %v", out.String(), err)
+	}
+	if len(decoded) != 1 {
+		t.Fatalf("decoded event count = %d, want 1", len(decoded))
+	}
+	for key, want := range map[string]string{
+		"$schema":        events.SchemaURL,
+		"schema_version": events.SchemaVersion,
+		"source":         "secuarden-cli",
+	} {
+		if got := decoded[0][key]; got != want {
+			t.Errorf("%s = %#v, want %q", key, got, want)
+		}
+	}
+}
+
 func TestRenderEventsSensitiveAndNoTruncation(t *testing.T) {
 	command := "go test ./... -run TestAReallyLongCommandThatMustRemainReadableWithoutEllipsis"
 	events := []storage.StoredEvent{{
