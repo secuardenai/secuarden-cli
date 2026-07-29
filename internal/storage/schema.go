@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     started_at TEXT NOT NULL,
     ended_at TEXT,
     event_count INTEGER NOT NULL DEFAULT 0,
+    session_hash TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
