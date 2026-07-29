@@ -38,6 +38,9 @@ var gateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if integrity.LegacyEvents > 0 || integrity.LegacySessions > 0 {
+			return fmt.Errorf("gate blocked: audit trail contains legacy records without complete integrity coverage")
+		}
 		if !integrity.Valid {
 			return fmt.Errorf("gate blocked: audit trail integrity failed")
 		}

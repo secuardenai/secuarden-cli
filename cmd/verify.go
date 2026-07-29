@@ -32,15 +32,16 @@ var verifyCmd = &cobra.Command{
 		}
 		if !result.Valid {
 			fmt.Fprintf(cmd.OutOrStdout(), "✗ Audit trail verification failed (%d event(s) checked)\n", result.EventsChecked)
+			if result.LegacyEvents > 0 || result.LegacySessions > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "  legacy records lack complete integrity coverage: %d event(s), %d session(s)\n",
+					result.LegacyEvents, result.LegacySessions)
+			}
 			for _, failure := range result.Failures {
-				fmt.Fprintf(cmd.OutOrStdout(), "  broken chain at %s\n", failure)
+				fmt.Fprintf(cmd.OutOrStdout(), "  integrity finding at %s\n", failure)
 			}
 			return fmt.Errorf("audit trail integrity check failed")
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "✓ Audit trail verified · %d events across %d sessions", result.EventsChecked, result.SessionsChecked)
-		if result.LegacyEvents > 0 {
-			fmt.Fprintf(cmd.OutOrStdout(), " · %d legacy events predate hash chaining", result.LegacyEvents)
-		}
 		fmt.Fprintln(cmd.OutOrStdout())
 		return nil
 	},

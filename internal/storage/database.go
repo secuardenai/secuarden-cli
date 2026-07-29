@@ -62,6 +62,7 @@ func Open(path string) (*DB, error) {
 	for _, migration := range []string{
 		"ALTER TABLE events ADD COLUMN previous_event_hash TEXT",
 		"ALTER TABLE events ADD COLUMN event_hash TEXT",
+		"ALTER TABLE sessions ADD COLUMN session_hash TEXT",
 	} {
 		if _, err := db.Exec(migration); err != nil && !isDuplicateColumnError(err) {
 			db.Close()
@@ -88,10 +89,16 @@ func (d *DB) Close() error {
 // EnsureSession creates a session row if it doesn't exist. Returns the session ID.
 func (d *DB) EnsureSession(sessionID, agentName, workingDir string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := d.db.Exec(`
-		INSERT OR IGNORE INTO sessions (id, agent_name, working_directory, started_at)
-		VALUES (?, ?, ?, ?)`,
-		sessionID, agentName, workingDir, now,
+	sessionHash, err := computeSessionHash(sessionIntegrityRecord{
+		ID: sessionID, AgentName: agentName, WorkingDirectory: workingDir,
+	})
+	if err != nil {
+		return fmt.Errorf("hash session: %w", err)
+	}
+	_, err = d.db.Exec(`
+		INSERT OR IGNORE INTO sessions (id, agent_name, working_directory, started_at, session_hash)
+		VALUES (?, ?, ?, ?, ?)`,
+		sessionID, agentName, workingDir, now, sessionHash,
 	)
 	return err
 }
@@ -121,7 +128,12 @@ type SessionIdentity struct {
 // UpdateSessionIdentity writes developer and git identity fields for a session.
 // Uses a fully static SQL statement — no column name is ever interpolated.
 func (d *DB) UpdateSessionIdentity(sessionID string, id SessionIdentity) error {
-	_, err := d.db.Exec(`
+	tx, err := d.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin session identity update: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`
 		UPDATE sessions SET
 			developer_name  = ?,
 			developer_email = ?,
@@ -134,8 +146,13 @@ func (d *DB) UpdateSessionIdentity(sessionID string, id SessionIdentity) error {
 		nullStr(id.OSUser), nullStr(id.MachineID),
 		nullStr(id.GitBranch), nullStr(id.GitRepoURL),
 		sessionID,
-	)
-	return err
+	); err != nil {
+		return err
+	}
+	if err := updateSessionHash(tx, sessionID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // NextSequence returns the next sequence number for a session.
@@ -181,7 +198,10 @@ func (d *DB) WriteEvent(e *events.Event) error {
 	var previousHash string
 	_ = tx.QueryRow(`SELECT COALESCE(event_hash, '') FROM events
 		WHERE session_id = ? ORDER BY sequence DESC LIMIT 1`, e.SessionID).Scan(&previousHash)
-	eventHash := computeEventHash(previousHash, e)
+	eventHash, err := computeEventHashV2(previousHash, e, string(redactedJSON))
+	if err != nil {
+		return fmt.Errorf("hash event: %w", err)
+	}
 	_, err = tx.Exec(`
 		INSERT INTO events (
 			id, session_id, sequence, timestamp,
@@ -234,13 +254,126 @@ func (d *DB) WriteEvent(e *events.Event) error {
 	return tx.Commit()
 }
 
-func computeEventHash(previous string, e *events.Event) string {
-	payload := strings.Join([]string{
-		previous, e.ID, e.SessionID, strconv.Itoa(e.Sequence), e.Timestamp,
-		e.AgentName, e.HookPhase, e.ActionType, e.RawEventHash,
-	}, "\x00")
-	sum := sha256.Sum256([]byte(payload))
-	return fmt.Sprintf("%x", sum[:])
+const (
+	eventHashPrefix   = "v2:"
+	sessionHashPrefix = "s1:"
+)
+
+// eventIntegrityRecordV2 is the canonical representation of every
+// security-relevant event value persisted in the events table. New fields must
+// be introduced in a new format version rather than changing this structure.
+type eventIntegrityRecordV2 struct {
+	FormatVersion        int    `json:"format_version"`
+	PreviousEventHash    string `json:"previous_event_hash"`
+	ID                   string `json:"id"`
+	SessionID            string `json:"session_id"`
+	Sequence             int    `json:"sequence"`
+	Timestamp            string `json:"timestamp"`
+	Source               string `json:"source"`
+	SourceVersion        string `json:"source_version"`
+	AgentName            string `json:"agent_name"`
+	HookPhase            string `json:"hook_phase"`
+	ActionType           string `json:"action_type"`
+	ToolName             string `json:"tool_name"`
+	ResultStatus         string `json:"result_status"`
+	IsSensitive          bool   `json:"is_sensitive"`
+	RedactedFields       string `json:"redacted_fields"`
+	FilePath             string `json:"file_path"`
+	ContentHash          string `json:"content_hash"`
+	DiffStats            string `json:"diff_stats"`
+	Command              string `json:"command"`
+	ExitCode             *int   `json:"exit_code"`
+	CommandOutputPreview string `json:"command_output_preview"`
+	MCPServer            string `json:"mcp_server"`
+	MCPTool              string `json:"mcp_tool"`
+	DurationMS           *int64 `json:"duration_ms"`
+	WorkingDirectory     string `json:"working_directory"`
+	GitBranch            string `json:"git_branch"`
+	DeveloperEmail       string `json:"developer_email"`
+	IntentSummary        string `json:"intent_summary"`
+	RawEventHash         string `json:"raw_event_hash"`
+}
+
+func computeEventHashV2(previous string, e *events.Event, redactedFields string) (string, error) {
+	return hashCanonicalJSON(eventHashPrefix, eventIntegrityRecordV2{
+		FormatVersion: 2, PreviousEventHash: previous,
+		ID: e.ID, SessionID: e.SessionID, Sequence: e.Sequence, Timestamp: e.Timestamp,
+		Source: e.Source, SourceVersion: e.SourceVersion, AgentName: e.AgentName,
+		HookPhase: e.HookPhase, ActionType: e.ActionType, ToolName: e.ToolName,
+		ResultStatus: e.ResultStatus, IsSensitive: e.IsSensitive,
+		RedactedFields: redactedFields, FilePath: e.FilePath, ContentHash: e.ContentHash,
+		DiffStats: e.DiffStats, Command: e.Command, ExitCode: e.ExitCode,
+		CommandOutputPreview: e.CommandOutputPreview, MCPServer: e.MCPServer,
+		MCPTool: e.MCPTool, DurationMS: e.DurationMS, WorkingDirectory: e.WorkingDirectory,
+		GitBranch: e.GitBranch, DeveloperEmail: e.DeveloperEmail,
+		IntentSummary: e.IntentSummary, RawEventHash: e.RawEventHash,
+	})
+}
+
+// sessionIntegrityRecord protects the session context consumed by provenance
+// reporting and secuarden gate.
+type sessionIntegrityRecord struct {
+	FormatVersion    int    `json:"format_version"`
+	ID               string `json:"id"`
+	AgentName        string `json:"agent_name"`
+	AgentVersion     string `json:"agent_version"`
+	Model            string `json:"model"`
+	DeveloperName    string `json:"developer_name"`
+	DeveloperEmail   string `json:"developer_email"`
+	OSUser           string `json:"os_user"`
+	MachineID        string `json:"machine_id"`
+	WorkingDirectory string `json:"working_directory"`
+	GitRepoURL       string `json:"git_repo_url"`
+	GitBranch        string `json:"git_branch"`
+}
+
+func computeSessionHash(record sessionIntegrityRecord) (string, error) {
+	record.FormatVersion = 1
+	return hashCanonicalJSON(sessionHashPrefix, record)
+}
+
+func hashCanonicalJSON(prefix string, value interface{}) (string, error) {
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(payload)
+	return prefix + fmt.Sprintf("%x", sum[:]), nil
+}
+
+func readSessionIntegrityRecord(row *sql.Row) (sessionIntegrityRecord, string, error) {
+	var record sessionIntegrityRecord
+	var storedHash string
+	err := row.Scan(
+		&record.ID, &record.AgentName, &record.AgentVersion, &record.Model,
+		&record.DeveloperName, &record.DeveloperEmail, &record.OSUser,
+		&record.MachineID, &record.WorkingDirectory, &record.GitRepoURL,
+		&record.GitBranch, &storedHash,
+	)
+	return record, storedHash, err
+}
+
+const sessionIntegritySelect = `SELECT id, agent_name,
+	COALESCE(agent_version, ''), COALESCE(model, ''),
+	COALESCE(developer_name, ''), COALESCE(developer_email, ''),
+	COALESCE(os_user, ''), COALESCE(machine_id, ''),
+	COALESCE(working_directory, ''), COALESCE(git_repo_url, ''),
+	COALESCE(git_branch, ''), COALESCE(session_hash, '')
+	FROM sessions WHERE id = ?`
+
+func updateSessionHash(tx *sql.Tx, sessionID string) error {
+	record, _, err := readSessionIntegrityRecord(tx.QueryRow(sessionIntegritySelect, sessionID))
+	if err != nil {
+		return fmt.Errorf("read session for hashing: %w", err)
+	}
+	hash, err := computeSessionHash(record)
+	if err != nil {
+		return fmt.Errorf("hash session: %w", err)
+	}
+	if _, err := tx.Exec("UPDATE sessions SET session_hash = ? WHERE id = ?", hash, sessionID); err != nil {
+		return fmt.Errorf("store session hash: %w", err)
+	}
+	return nil
 }
 
 // IntegrityResult describes verification of the append-only event hash chains.
@@ -249,6 +382,7 @@ type IntegrityResult struct {
 	EventsChecked   int      `json:"events_checked"`
 	SessionsChecked int      `json:"sessions_checked"`
 	LegacyEvents    int      `json:"legacy_events"`
+	LegacySessions  int      `json:"legacy_sessions"`
 	Failures        []string `json:"failures,omitempty"`
 }
 
@@ -297,40 +431,114 @@ func (d *DB) ListWriteProvenance(since time.Time) ([]ProvenanceRecord, error) {
 
 // VerifyIntegrity recomputes every session chain without reading source files.
 func (d *DB) VerifyIntegrity() (*IntegrityResult, error) {
-	rows, err := d.db.Query(`SELECT id, session_id, sequence, timestamp, agent_name,
-		hook_phase, action_type, COALESCE(raw_event_hash, ''),
+	rows, err := d.db.Query(`SELECT id, session_id, sequence, timestamp,
+		source, COALESCE(source_version, ''), agent_name, hook_phase, action_type,
+		COALESCE(tool_name, ''), COALESCE(result_status, ''), is_sensitive,
+		COALESCE(redacted_fields, 'null'), COALESCE(file_path, ''),
+		COALESCE(content_hash, ''), COALESCE(diff_stats, ''),
+		COALESCE(command, ''), exit_code, COALESCE(command_output_preview, ''),
+		COALESCE(mcp_server, ''), COALESCE(mcp_tool, ''), duration_ms,
+		COALESCE(working_directory, ''), COALESCE(git_branch, ''),
+		COALESCE(developer_email, ''), COALESCE(intent_summary, ''),
+		COALESCE(raw_event_hash, ''),
 		COALESCE(previous_event_hash, ''), COALESCE(event_hash, '')
-		FROM events ORDER BY session_id, sequence`)
+		FROM events ORDER BY session_id, sequence, id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	result := &IntegrityResult{Valid: true}
 	previous := map[string]string{}
-	sessions := map[string]bool{}
 	for rows.Next() {
 		var e events.Event
-		var storedPrevious, storedHash string
-		if err := rows.Scan(&e.ID, &e.SessionID, &e.Sequence, &e.Timestamp, &e.AgentName,
-			&e.HookPhase, &e.ActionType, &e.RawEventHash, &storedPrevious, &storedHash); err != nil {
+		var redactedFields, storedPrevious, storedHash string
+		var sensitive int
+		var exitCode, durationMS sql.NullInt64
+		if err := rows.Scan(
+			&e.ID, &e.SessionID, &e.Sequence, &e.Timestamp, &e.Source,
+			&e.SourceVersion, &e.AgentName, &e.HookPhase, &e.ActionType,
+			&e.ToolName, &e.ResultStatus, &sensitive, &redactedFields,
+			&e.FilePath, &e.ContentHash, &e.DiffStats, &e.Command, &exitCode,
+			&e.CommandOutputPreview, &e.MCPServer, &e.MCPTool, &durationMS,
+			&e.WorkingDirectory, &e.GitBranch, &e.DeveloperEmail,
+			&e.IntentSummary, &e.RawEventHash, &storedPrevious, &storedHash,
+		); err != nil {
 			return nil, err
 		}
+		e.IsSensitive = sensitive == 1
+		if exitCode.Valid {
+			value := int(exitCode.Int64)
+			e.ExitCode = &value
+		}
+		if durationMS.Valid {
+			value := durationMS.Int64
+			e.DurationMS = &value
+		}
 		result.EventsChecked++
-		sessions[e.SessionID] = true
-		if storedHash == "" {
+		if !strings.HasPrefix(storedHash, eventHashPrefix) {
 			result.LegacyEvents++
+			result.Valid = false
+			result.Failures = append(result.Failures, "legacy:"+e.SessionID+":"+strconv.Itoa(e.Sequence))
+			// Old 64-character partial hashes and unhashed rows remain readable,
+			// but are explicitly legacy and are not claimed as fully verified.
+			// Carry the exact stored value because a later v2 event chained to it.
+			previous[e.SessionID] = storedHash
 			continue
 		}
 		expectedPrevious := previous[e.SessionID]
-		expectedHash := computeEventHash(expectedPrevious, &e)
+		expectedHash, err := computeEventHashV2(expectedPrevious, &e, redactedFields)
+		if err != nil {
+			return nil, fmt.Errorf("hash event %s: %w", e.ID, err)
+		}
 		if storedPrevious != expectedPrevious || storedHash != expectedHash {
 			result.Valid = false
 			result.Failures = append(result.Failures, e.SessionID+":"+strconv.Itoa(e.Sequence))
 		}
 		previous[e.SessionID] = storedHash
 	}
-	result.SessionsChecked = len(sessions)
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	sessionRows, err := d.db.Query(`SELECT id, agent_name,
+		COALESCE(agent_version, ''), COALESCE(model, ''),
+		COALESCE(developer_name, ''), COALESCE(developer_email, ''),
+		COALESCE(os_user, ''), COALESCE(machine_id, ''),
+		COALESCE(working_directory, ''), COALESCE(git_repo_url, ''),
+		COALESCE(git_branch, ''), COALESCE(session_hash, '')
+		FROM sessions ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer sessionRows.Close()
+	for sessionRows.Next() {
+		result.SessionsChecked++
+		var record sessionIntegrityRecord
+		var storedHash string
+		if err := sessionRows.Scan(
+			&record.ID, &record.AgentName, &record.AgentVersion, &record.Model,
+			&record.DeveloperName, &record.DeveloperEmail, &record.OSUser,
+			&record.MachineID, &record.WorkingDirectory, &record.GitRepoURL,
+			&record.GitBranch, &storedHash,
+		); err != nil {
+			return nil, err
+		}
+		if !strings.HasPrefix(storedHash, sessionHashPrefix) {
+			result.LegacySessions++
+			result.Valid = false
+			result.Failures = append(result.Failures, "legacy-session:"+record.ID)
+			continue
+		}
+		expectedHash, err := computeSessionHash(record)
+		if err != nil {
+			return nil, fmt.Errorf("hash session %s: %w", record.ID, err)
+		}
+		if storedHash != expectedHash {
+			result.Valid = false
+			result.Failures = append(result.Failures, "session:"+record.ID)
+		}
+	}
+	return result, sessionRows.Err()
 }
 
 // SetMeta stores a metadata key-value pair.

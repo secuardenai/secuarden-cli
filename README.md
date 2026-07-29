@@ -154,9 +154,15 @@ and does not make network calls.
 
 ### Provenance integrity and CI gate
 
-New events are chained using their capture identity, ordering, action metadata,
-raw-input digest, and the preceding event hash. Verification and export operate
-entirely on the local redacted database.
+New events use a versioned canonical hash covering all persisted event evidence
+and the preceding event hash. Repository, branch, model, and developer identity
+are protected by a separate versioned session hash. Verification and export
+operate entirely on the local redacted database.
+
+Records created before complete hashing remain readable and are reported as
+legacy, but the overall integrity result is invalid because their provenance
+cannot receive complete integrity coverage retroactively. Verification,
+AI-BOM export, and `secuarden gate` therefore fail closed.
 
 ```bash
 # Verify evidence before an audit or export
