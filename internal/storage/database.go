@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
@@ -72,6 +73,27 @@ func Open(path string) (*DB, error) {
 	if _, err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_events_hash ON events(event_hash) WHERE event_hash IS NOT NULL"); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("create event hash index: %w", err)
+	}
+	var duplicateSession string
+	var duplicateSequence, duplicateCount int
+	err = db.QueryRow(`SELECT session_id, sequence, COUNT(*)
+		FROM events GROUP BY session_id, sequence HAVING COUNT(*) > 1
+		ORDER BY session_id, sequence LIMIT 1`).
+		Scan(&duplicateSession, &duplicateSequence, &duplicateCount)
+	if err != nil && err != sql.ErrNoRows {
+		db.Close()
+		return nil, fmt.Errorf("inspect event sequence migration: %w", err)
+	}
+	if err == nil {
+		db.Close()
+		return nil, fmt.Errorf(
+			"cannot create unique event sequence index: session %q sequence %d has %d captured events; no events were removed, resolve the duplicate rows before reopening",
+			duplicateSession, duplicateSequence, duplicateCount,
+		)
+	}
+	if _, err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_events_session_sequence ON events(session_id, sequence)"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("create unique event sequence index: %w", err)
 	}
 
 	return &DB{db: db}, nil
@@ -155,20 +177,8 @@ func (d *DB) UpdateSessionIdentity(sessionID string, id SessionIdentity) error {
 	return tx.Commit()
 }
 
-// NextSequence returns the next sequence number for a session.
-func (d *DB) NextSequence(sessionID string) (int, error) {
-	var seq int
-	row := d.db.QueryRow(
-		"SELECT COALESCE(MAX(sequence), 0) + 1 FROM events WHERE session_id = ?",
-		sessionID,
-	)
-	if err := row.Scan(&seq); err != nil {
-		return 1, err
-	}
-	return seq, nil
-}
-
-// WriteEvent inserts an event into the database.
+// WriteEvent atomically allocates the per-session sequence, reads the previous
+// hash, hashes the event, and inserts it under an SQLite immediate transaction.
 func (d *DB) WriteEvent(e *events.Event) error {
 	redactedJSON, err := json.Marshal(e.RedactedFields)
 	if err != nil {
@@ -190,19 +200,49 @@ func (d *DB) WriteEvent(e *events.Event) error {
 		sensitive = 1
 	}
 
-	tx, err := d.db.Begin()
+	ctx := context.Background()
+	conn, err := d.db.Conn(ctx)
 	if err != nil {
-		return fmt.Errorf("begin event write: %w", err)
+		return fmt.Errorf("acquire event write connection: %w", err)
 	}
-	defer tx.Rollback()
+	defer conn.Close()
+
+	// PRAGMAs are connection-local. Apply the configured timeout to the pinned
+	// connection before BEGIN IMMEDIATE obtains SQLite's reserved writer lock.
+	if _, err := conn.ExecContext(ctx, "PRAGMA busy_timeout=5000"); err != nil {
+		return fmt.Errorf("configure event write busy timeout: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys=ON"); err != nil {
+		return fmt.Errorf("configure event write foreign keys: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return eventWriteError("begin immediate event write", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(ctx, "ROLLBACK")
+		}
+	}()
+
+	var sequence int
 	var previousHash string
-	_ = tx.QueryRow(`SELECT COALESCE(event_hash, '') FROM events
-		WHERE session_id = ? ORDER BY sequence DESC LIMIT 1`, e.SessionID).Scan(&previousHash)
+	if err := conn.QueryRowContext(ctx, `SELECT
+		COALESCE(MAX(sequence), 0) + 1,
+		COALESCE((
+			SELECT event_hash FROM events
+			WHERE session_id = ? ORDER BY sequence DESC, id DESC LIMIT 1
+		), '')
+		FROM events WHERE session_id = ?`, e.SessionID, e.SessionID).
+		Scan(&sequence, &previousHash); err != nil {
+		return fmt.Errorf("allocate event sequence: %w", err)
+	}
+	e.Sequence = sequence
 	eventHash, err := computeEventHashV2(previousHash, e, string(redactedJSON))
 	if err != nil {
 		return fmt.Errorf("hash event: %w", err)
 	}
-	_, err = tx.Exec(`
+	_, err = conn.ExecContext(ctx, `
 		INSERT INTO events (
 			id, session_id, sequence, timestamp,
 			source, source_version,
@@ -243,15 +283,30 @@ func (d *DB) WriteEvent(e *events.Event) error {
 		nullStr(previousHash), eventHash,
 	)
 	if err != nil {
-		return fmt.Errorf("insert event: %w", err)
+		return eventWriteError("insert event", err)
 	}
 
 	// Keep event_count in sessions up to date
-	_, _ = tx.Exec(
+	if _, err := conn.ExecContext(ctx,
 		"UPDATE sessions SET event_count = event_count + 1 WHERE id = ?",
 		e.SessionID,
-	)
-	return tx.Commit()
+	); err != nil {
+		return eventWriteError("update session event count", err)
+	}
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return eventWriteError("commit event write", err)
+	}
+	committed = true
+	return nil
+}
+
+func eventWriteError(operation string, err error) error {
+	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "database is locked") || strings.Contains(message, "database is busy") ||
+		strings.Contains(message, "sqlite_busy") {
+		return fmt.Errorf("%s: SQLite write contention exceeded 5s busy timeout: %w", operation, err)
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }
 
 const (
