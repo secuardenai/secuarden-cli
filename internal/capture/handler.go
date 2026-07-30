@@ -100,7 +100,7 @@ func handle(phase, version string) error {
 	} else {
 		// Redact secrets from text fields
 		fieldsToRedact := map[string]string{
-			"command":               command,
+			"command":                command,
 			"command_output_preview": outputPreview,
 		}
 		scrubbed, names := privacy.RedactFields(fieldsToRedact)
@@ -155,40 +155,35 @@ func handle(phase, version string) error {
 		})
 	}
 
-	// 12. Compute sequence and insert event
-	seq, err := db.NextSequence(sessionID)
-	if err != nil {
-		seq = 1
-	}
-
+	// 12. Insert event. Storage allocates its per-session sequence atomically
+	// with the previous-hash lookup and insert.
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 
 	e := &events.Event{
-		Schema:        events.SchemaURL,
-		SchemaVersion: events.SchemaVersion,
-		ID:            eventID,
-		SessionID:     sessionID,
-		Sequence:      seq,
-		Timestamp:     now,
-		Source:        "secuarden-cli",
-		SourceVersion: version,
-		AgentName:     agentName,
-		HookPhase:     hookPhase,
-		ActionType:    actionType,
-		ToolName:      toolName,
-		ResultStatus:  resultStatus,
-		IsSensitive:   isSensitive,
-		RedactedFields: redactedFields,
-		FilePath:      filePath,
-		ContentHash:   contentHash,
-		DiffStats:     diffStats,
-		Command:       command,
-		ExitCode:      exitCode,
+		Schema:               events.SchemaURL,
+		SchemaVersion:        events.SchemaVersion,
+		ID:                   eventID,
+		SessionID:            sessionID,
+		Timestamp:            now,
+		Source:               "secuarden-cli",
+		SourceVersion:        version,
+		AgentName:            agentName,
+		HookPhase:            hookPhase,
+		ActionType:           actionType,
+		ToolName:             toolName,
+		ResultStatus:         resultStatus,
+		IsSensitive:          isSensitive,
+		RedactedFields:       redactedFields,
+		FilePath:             filePath,
+		ContentHash:          contentHash,
+		DiffStats:            diffStats,
+		Command:              command,
+		ExitCode:             exitCode,
 		CommandOutputPreview: outputPreview,
-		MCPServer:     mcpServer,
-		MCPTool:       mcpTool,
-		WorkingDirectory: cwd,
-		RawEventHash:  rawHash,
+		MCPServer:            mcpServer,
+		MCPTool:              mcpTool,
+		WorkingDirectory:     cwd,
+		RawEventHash:         rawHash,
 	}
 
 	if dev != nil {

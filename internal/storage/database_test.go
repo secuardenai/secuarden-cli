@@ -1,8 +1,11 @@
 package storage
 
 import (
+	"database/sql"
+	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/secuardenai/secuarden-cli/internal/events"
@@ -74,27 +77,190 @@ func TestWriteEvent(t *testing.T) {
 	}
 }
 
-func TestNextSequence(t *testing.T) {
+func TestWriteEventAllocatesIndependentSessionSequences(t *testing.T) {
 	db, _ := tempDB(t)
-	_ = db.EnsureSession("sess-1", "claude-code", "/tmp")
-
-	seq1, _ := db.NextSequence("sess-1")
-	if seq1 != 1 {
-		t.Errorf("expected seq=1, got %d", seq1)
+	for _, sessionID := range []string{"sess-1", "sess-2"} {
+		if err := db.EnsureSession(sessionID, "claude-code", "/tmp"); err != nil {
+			t.Fatal(err)
+		}
 	}
 
-	e := &events.Event{
-		Schema: events.SchemaURL, SchemaVersion: events.SchemaVersion,
-		ID: "evt-1", SessionID: "sess-1", Sequence: 1,
-		Timestamp: "2026-05-27T10:00:00Z", Source: "secuarden-cli",
-		AgentName: "claude-code", HookPhase: events.HookPhasePre,
-		ActionType: events.ActionCommandExec, IsSensitive: false,
+	writes := []*events.Event{
+		{ID: "s1-event-1", SessionID: "sess-1"},
+		{ID: "s1-event-2", SessionID: "sess-1"},
+		{ID: "s2-event-1", SessionID: "sess-2"},
 	}
-	_ = db.WriteEvent(e)
+	for _, event := range writes {
+		event.Timestamp = "2026-05-27T10:00:00Z"
+		event.Source = "secuarden-cli"
+		event.AgentName = "claude-code"
+		event.HookPhase = events.HookPhasePre
+		event.ActionType = events.ActionCommandExec
+		event.Sequence = 999 // WriteEvent must ignore caller-provided allocation.
+		if err := db.WriteEvent(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if writes[0].Sequence != 1 || writes[1].Sequence != 2 || writes[2].Sequence != 1 {
+		t.Fatalf("unexpected allocated sequences: %d, %d, %d",
+			writes[0].Sequence, writes[1].Sequence, writes[2].Sequence)
+	}
+}
 
-	seq2, _ := db.NextSequence("sess-1")
-	if seq2 != 2 {
-		t.Errorf("expected seq=2, got %d", seq2)
+func TestWriteEventConcurrentSingleLinearChain(t *testing.T) {
+	const (
+		rounds = 3
+		writes = 40
+	)
+	for round := 0; round < rounds; round++ {
+		t.Run(fmt.Sprintf("round-%d", round+1), func(t *testing.T) {
+			db, path := tempDB(t)
+			if err := db.EnsureSession("concurrent-session", "claude-code", "/tmp/project"); err != nil {
+				t.Fatal(err)
+			}
+
+			handles := make([]*DB, writes)
+			for i := range handles {
+				handle, err := Open(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				handles[i] = handle
+				t.Cleanup(func() { _ = handle.Close() })
+			}
+
+			start := make(chan struct{})
+			errs := make(chan error, writes)
+			var wg sync.WaitGroup
+			for i, handle := range handles {
+				wg.Add(1)
+				go func(index int, writer *DB) {
+					defer wg.Done()
+					<-start
+					event := &events.Event{
+						ID: fmt.Sprintf("concurrent-%02d", index), SessionID: "concurrent-session",
+						Timestamp: "2026-05-27T10:00:00Z", Source: "secuarden-cli",
+						AgentName: "claude-code", HookPhase: events.HookPhasePost,
+						ActionType: events.ActionFileWrite, FilePath: fmt.Sprintf("file-%02d.go", index),
+						ContentHash: fmt.Sprintf("sha256:%02d", index), RawEventHash: fmt.Sprintf("raw-%02d", index),
+					}
+					errs <- writer.WriteEvent(event)
+				}(i, handle)
+			}
+			close(start)
+			wg.Wait()
+			close(errs)
+			for err := range errs {
+				if err != nil {
+					t.Errorf("concurrent write failed: %v", err)
+				}
+			}
+			if t.Failed() {
+				return
+			}
+
+			rows, err := db.db.Query(`SELECT sequence, COALESCE(previous_event_hash, ''), event_hash
+				FROM events WHERE session_id = ? ORDER BY sequence`, "concurrent-session")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer rows.Close()
+			count := 0
+			previousHash := ""
+			for rows.Next() {
+				count++
+				var sequence int
+				var storedPrevious, eventHash string
+				if err := rows.Scan(&sequence, &storedPrevious, &eventHash); err != nil {
+					t.Fatal(err)
+				}
+				if sequence != count {
+					t.Fatalf("sequence %d at position %d; want contiguous 1..%d", sequence, count, writes)
+				}
+				if storedPrevious != previousHash {
+					t.Fatalf("sequence %d links to %q; want %q", sequence, storedPrevious, previousHash)
+				}
+				previousHash = eventHash
+			}
+			if err := rows.Err(); err != nil {
+				t.Fatal(err)
+			}
+			if count != writes {
+				t.Fatalf("stored %d successful writes; want %d", count, writes)
+			}
+			result, err := db.VerifyIntegrity()
+			if err != nil || !result.Valid || result.EventsChecked != writes {
+				t.Fatalf("concurrent chain did not verify: result=%+v err=%v", result, err)
+			}
+		})
+	}
+}
+
+func TestOpenSequenceUniquenessMigrationPreservesDuplicates(t *testing.T) {
+	file, err := os.CreateTemp("", "secuarden-migration-*.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := file.Name()
+	file.Close()
+	t.Cleanup(func() { _ = os.Remove(path) })
+
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(sqlSchema); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`INSERT INTO sessions (id, started_at) VALUES ('legacy-session', '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`INSERT INTO events
+		(id, session_id, sequence, timestamp, source, agent_name, hook_phase, action_type)
+		VALUES
+		('legacy-1', 'legacy-session', 1, '2026-01-01T00:00:00Z', 'secuarden-cli', 'claude-code', 'pre', 'file_read'),
+		('legacy-2', 'legacy-session', 1, '2026-01-01T00:00:01Z', 'secuarden-cli', 'claude-code', 'post', 'file_read')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if migrated, err := Open(path); err == nil {
+		_ = migrated.Close()
+		t.Fatal("expected duplicate sequence migration to fail")
+	} else if !strings.Contains(err.Error(), "no events were removed") {
+		t.Fatalf("migration error does not explain preservation: %v", err)
+	}
+
+	raw, err = sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := raw.QueryRow(`SELECT COUNT(*) FROM events WHERE session_id = 'legacy-session' AND sequence = 1`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("migration discarded captured events: got %d, want 2", count)
+	}
+	if _, err := raw.Exec(`DELETE FROM events WHERE id = 'legacy-2'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	migrated, err := Open(path)
+	if err != nil {
+		t.Fatalf("migration after duplicate resolution: %v", err)
+	}
+	defer migrated.Close()
+	if _, err := migrated.db.Exec(`INSERT INTO events
+		(id, session_id, sequence, timestamp, source, agent_name, hook_phase, action_type)
+		VALUES ('duplicate', 'legacy-session', 1, '2026-01-01T00:00:02Z',
+		'secuarden-cli', 'claude-code', 'pre', 'file_read')`); err == nil {
+		t.Fatal("unique session/sequence index was not created")
 	}
 }
 
