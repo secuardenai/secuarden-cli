@@ -107,6 +107,53 @@ func TestWriteEventAllocatesIndependentSessionSequences(t *testing.T) {
 	}
 }
 
+func TestPendingSyncSessionsTrackSuccessfulEventCount(t *testing.T) {
+	db, _ := tempDB(t)
+	if err := db.EnsureSession("sync-session", "claude-code", "/tmp"); err != nil {
+		t.Fatal(err)
+	}
+	write := func(id string) {
+		t.Helper()
+		if err := db.WriteEvent(&events.Event{
+			ID: id, SessionID: "sync-session", Timestamp: "2026-07-30T10:00:00Z",
+			Source: "secuarden-cli", AgentName: "claude-code",
+			HookPhase: events.HookPhasePost, ActionType: events.ActionFileWrite,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	write("sync-event-1")
+	pending, err := db.ListPendingSyncSessions(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 || pending[0].SessionID != "sync-session" ||
+		pending[0].EventCount != 1 || pending[0].LastSyncedEventCount != 0 {
+		t.Fatalf("unexpected initial pending state: %#v", pending)
+	}
+	if err := db.RecordSyncSuccess("sync-session", 1); err != nil {
+		t.Fatal(err)
+	}
+	pending, err = db.ListPendingSyncSessions(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("synced session remained pending: %#v", pending)
+	}
+
+	write("sync-event-2")
+	pending, err = db.ListPendingSyncSessions(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 || pending[0].EventCount != 2 ||
+		pending[0].LastSyncedEventCount != 1 {
+		t.Fatalf("new event did not make session pending: %#v", pending)
+	}
+}
+
 func TestWriteEventConcurrentSingleLinearChain(t *testing.T) {
 	const (
 		rounds = 3
