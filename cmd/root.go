@@ -30,4 +30,5 @@ func init() {
 	rootCmd.AddCommand(verifyCmd)
 	rootCmd.AddCommand(bomCmd)
 	rootCmd.AddCommand(gateCmd)
+	rootCmd.AddCommand(syncCmd)
 }

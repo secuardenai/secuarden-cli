@@ -148,6 +148,7 @@ and reporting remain separate:
 - `secuarden verify` — recompute the per-session SHA-256 chains and identify the exact session/sequence of modified evidence.
 - `secuarden bom` — export file-write provenance, agent/model/developer context, risk reasons, content hashes, and integrity status as an AI-BOM JSON document.
 - `secuarden gate` — return a non-zero exit code when AI-authored file changes meet a configurable deterministic risk threshold.
+- `secuarden sync` — retry delivery of captured sessions that contain events not included in their last successful SaaS upload; use `--session <id>` to force a specific session.
 
 All formats use only already-redacted database fields. Reporting never rereads files
 and does not make network calls.

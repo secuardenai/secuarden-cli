@@ -675,6 +675,83 @@ type SessionSummary struct {
 	FilesEdited      []string `json:"files_edited,omitempty"`
 }
 
+// PendingSyncSession describes a session whose current event count exceeds its
+// last successfully uploaded event count.
+type PendingSyncSession struct {
+	SessionID            string
+	EventCount           int
+	LastSyncedEventCount int
+}
+
+// ListPendingSyncSessions returns sessions containing locally captured events
+// that have not been included in a successful SaaS upload.
+func (d *DB) ListPendingSyncSessions(limit int) ([]PendingSyncSession, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := d.db.Query(`
+		SELECT s.id,
+		       (SELECT COUNT(*) FROM events e WHERE e.session_id = s.id) AS current_count,
+		       COALESCE(ss.last_synced_event_count, 0)
+		FROM sessions s
+		LEFT JOIN session_sync_state ss ON ss.session_id = s.id
+		WHERE (SELECT COUNT(*) FROM events e WHERE e.session_id = s.id)
+		      > COALESCE(ss.last_synced_event_count, 0)
+		ORDER BY s.started_at, s.id
+		LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list pending sync sessions: %w", err)
+	}
+	defer rows.Close()
+	var pending []PendingSyncSession
+	for rows.Next() {
+		var item PendingSyncSession
+		if err := rows.Scan(&item.SessionID, &item.EventCount, &item.LastSyncedEventCount); err != nil {
+			return nil, fmt.Errorf("scan pending sync session: %w", err)
+		}
+		pending = append(pending, item)
+	}
+	return pending, rows.Err()
+}
+
+// RecordSyncSuccess checkpoints the exact event count included in a successful
+// upload. Events captured afterward make the session pending again.
+func (d *DB) RecordSyncSuccess(sessionID string, eventCount int) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := d.db.Exec(`
+		INSERT INTO session_sync_state (
+			session_id, last_synced_event_count, last_attempt_at, last_success_at, last_error
+		) VALUES (?, ?, ?, ?, NULL)
+		ON CONFLICT(session_id) DO UPDATE SET
+			last_synced_event_count = excluded.last_synced_event_count,
+			last_attempt_at = excluded.last_attempt_at,
+			last_success_at = excluded.last_success_at,
+			last_error = NULL`,
+		sessionID, eventCount, now, now,
+	)
+	return err
+}
+
+// RecordSyncFailure records delivery diagnostics without advancing the
+// successful event-count checkpoint.
+func (d *DB) RecordSyncFailure(sessionID string, syncErr error) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	message := ""
+	if syncErr != nil {
+		message = syncErr.Error()
+	}
+	_, err := d.db.Exec(`
+		INSERT INTO session_sync_state (
+			session_id, last_synced_event_count, last_attempt_at, last_error
+		) VALUES (?, 0, ?, ?)
+		ON CONFLICT(session_id) DO UPDATE SET
+			last_attempt_at = excluded.last_attempt_at,
+			last_error = excluded.last_error`,
+		sessionID, now, message,
+	)
+	return err
+}
+
 // ReadSessionSummary reads the session row and collects unique edited file paths
 // from the events table. Used to build the payload for SaaS sync.
 func (d *DB) ReadSessionSummary(sessionID string) (*SessionSummary, error) {

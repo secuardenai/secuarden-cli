@@ -269,8 +269,12 @@ func syncOnSessionEnd(sessionID string, db *storage.DB) {
 
 	feedback, err := upload.SyncSession(cfg, summary)
 	if err != nil {
+		_ = db.RecordSyncFailure(sessionID, err)
 		logError(fmt.Errorf("sync: upload: %w", err))
 		return
+	}
+	if err := db.RecordSyncSuccess(sessionID, summary.EventCount); err != nil {
+		logError(fmt.Errorf("sync: record success: %w", err))
 	}
 
 	if feedback == nil {

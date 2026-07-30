@@ -64,4 +64,13 @@ CREATE TABLE IF NOT EXISTS metadata (
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS session_sync_state (
+    session_id TEXT PRIMARY KEY,
+    last_synced_event_count INTEGER NOT NULL DEFAULT 0,
+    last_attempt_at TEXT,
+    last_success_at TEXT,
+    last_error TEXT,
+    FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
 `
