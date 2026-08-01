@@ -16,6 +16,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     started_at TEXT NOT NULL,
     ended_at TEXT,
     event_count INTEGER NOT NULL DEFAULT 0,
+    capture_failure_count INTEGER NOT NULL DEFAULT 0,
+    completeness_state TEXT NOT NULL DEFAULT 'complete',
+    completeness_reasons TEXT NOT NULL DEFAULT '[]',
+    privacy_mode TEXT NOT NULL DEFAULT 'redacted_content',
     session_hash TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -25,13 +29,25 @@ CREATE TABLE IF NOT EXISTS events (
     session_id TEXT NOT NULL,
     sequence INTEGER NOT NULL,
     timestamp TEXT NOT NULL,
+    schema_version TEXT,
+    captured_at TEXT,
+    invocation_id TEXT,
     source TEXT NOT NULL DEFAULT 'secuarden-cli',
     source_version TEXT,
     agent_name TEXT NOT NULL,
+    agent_version TEXT,
+    model TEXT,
+    provider TEXT,
     hook_phase TEXT NOT NULL,
     action_type TEXT NOT NULL,
     tool_name TEXT,
     result_status TEXT,
+    outcome TEXT,
+    permission_status TEXT,
+    execution_status TEXT,
+    privacy_mode TEXT,
+    completeness_state TEXT,
+    completeness_reasons TEXT,
     is_sensitive INTEGER NOT NULL DEFAULT 0,
     redacted_fields TEXT,
     file_path TEXT,
@@ -73,4 +89,14 @@ CREATE TABLE IF NOT EXISTS session_sync_state (
     last_error TEXT,
     FOREIGN KEY (session_id) REFERENCES sessions(id)
 );
+
+CREATE TABLE IF NOT EXISTS capture_failures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT,
+    hook_phase TEXT NOT NULL,
+    category TEXT NOT NULL,
+    occurred_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+CREATE INDEX IF NOT EXISTS idx_capture_failures_session ON capture_failures(session_id);
 `

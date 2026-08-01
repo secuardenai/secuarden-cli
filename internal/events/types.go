@@ -1,33 +1,41 @@
 package events
 
-const SchemaURL = "https://schema.secuarden.ai/v1/event.schema.json"
-const SchemaVersion = "1.0.0"
+const SchemaURL = "https://schema.secuarden.ai/stage1/2.0/event.schema.json"
+const SchemaVersion = "2.0.0"
 
 // Event is a governance event captured from an AI coding agent session.
-// It matches the JSON schema at schema/secuarden-event.schema.json.
+// It matches the JSON schema at schema/stage1/v2/event.schema.json.
 type Event struct {
 	Schema        string `json:"$schema"`
 	SchemaVersion string `json:"schema_version"`
 
-	ID        string `json:"id"`
-	SessionID string `json:"session_id"`
-	Sequence  int    `json:"sequence"`
-	Timestamp string `json:"timestamp"`
+	ID           string `json:"id"`
+	SessionID    string `json:"session_id"`
+	Sequence     int    `json:"sequence"`
+	Timestamp    string `json:"timestamp"`
+	CapturedAt   string `json:"captured_at"`
+	InvocationID string `json:"invocation_id,omitempty"`
 
 	Source        string `json:"source"`
 	SourceVersion string `json:"source_version,omitempty"`
 
 	AgentName    string `json:"agent_name"`
 	AgentVersion string `json:"agent_version,omitempty"`
+	Provider     string `json:"provider,omitempty"`
 
 	HookPhase  string `json:"hook_phase"`
 	ActionType string `json:"action_type"`
 	ToolName   string `json:"tool_name,omitempty"`
 
-	ResultStatus string `json:"result_status,omitempty"`
+	ResultStatus     string       `json:"result_status,omitempty"`
+	Outcome          string       `json:"outcome"`
+	PermissionStatus string       `json:"permission_status"`
+	ExecutionStatus  string       `json:"execution_status"`
+	PrivacyMode      string       `json:"privacy_mode"`
+	Completeness     Completeness `json:"completeness"`
 
 	IsSensitive    bool     `json:"is_sensitive"`
-	RedactedFields []string `json:"redacted_fields,omitempty"`
+	RedactedFields []string `json:"redacted_fields"`
 
 	FilePath    string `json:"file_path,omitempty"`
 	ContentHash string `json:"content_hash,omitempty"`
@@ -56,28 +64,35 @@ type Event struct {
 	Model         string `json:"model,omitempty"`
 }
 
+type Completeness struct {
+	State   string   `json:"state"`
+	Reasons []string `json:"reasons"`
+}
+
 // HookPhase constants
 const (
 	HookPhasePre          = "pre"
 	HookPhasePost         = "post"
 	HookPhaseSessionStart = "session_start"
 	HookPhaseSessionEnd   = "session_end"
+	HookPhaseIntent       = "intent"
 )
 
 // ActionType constants
 const (
-	ActionFileRead      = "file_read"
-	ActionFileWrite     = "file_write"
-	ActionFileDelete    = "file_delete"
-	ActionCommandExec   = "command_exec"
-	ActionNetworkReq    = "network_request"
-	ActionMCPToolUse    = "mcp_tool_use"
-	ActionSubagentSpawn = "subagent_spawn"
-	ActionPlan          = "plan"
-	ActionSessionStart  = "session_start"
-	ActionSessionEnd    = "session_end"
-	ActionNotification  = "notification"
-	ActionUnknown       = "unknown"
+	ActionFileRead        = "file_read"
+	ActionFileWrite       = "file_write"
+	ActionFileDelete      = "file_delete"
+	ActionCommandExec     = "command_exec"
+	ActionNetworkReq      = "network_request"
+	ActionMCPToolUse      = "mcp_tool_use"
+	ActionSubagentSpawn   = "subagent_spawn"
+	ActionPlan            = "plan"
+	ActionSessionStart    = "session_start"
+	ActionSessionEnd      = "session_end"
+	ActionDeveloperIntent = "developer_intent"
+	ActionNotification    = "notification"
+	ActionUnknown         = "unknown"
 )
 
 // ResultStatus constants
@@ -91,9 +106,14 @@ const (
 
 // RawHookInput is the raw JSON received from Claude Code hooks on stdin.
 type RawHookInput struct {
-	SessionID string `json:"session_id"`
-	Type      string `json:"type"`
-	CWD       string `json:"cwd"`
+	SessionID    string `json:"session_id"`
+	Type         string `json:"type"`
+	CWD          string `json:"cwd"`
+	ToolUseID    string `json:"tool_use_id"`
+	Model        string `json:"model"`
+	AgentVersion string `json:"agent_version"`
+	Timestamp    string `json:"timestamp"`
+	Prompt       string `json:"prompt"`
 
 	// PreToolUse / PostToolUse
 	ToolName  string                 `json:"tool_name"`

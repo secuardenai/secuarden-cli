@@ -28,31 +28,44 @@ type EventFilter struct {
 // StoredEvent is the privacy-safe event representation returned by activity
 // queries. Every text field comes directly from the already-redacted database.
 type StoredEvent struct {
-	Schema               string   `json:"$schema"`
-	SchemaVersion        string   `json:"schema_version"`
-	ID                   string   `json:"id"`
-	SessionID            string   `json:"session_id"`
-	Sequence             int      `json:"sequence"`
-	Timestamp            string   `json:"timestamp"`
-	Source               string   `json:"source"`
-	AgentName            string   `json:"agent_name"`
-	HookPhase            string   `json:"hook_phase"`
-	ActionType           string   `json:"action_type"`
-	ToolName             string   `json:"tool_name,omitempty"`
-	ResultStatus         string   `json:"result_status,omitempty"`
-	IsSensitive          bool     `json:"is_sensitive"`
-	RedactedFields       []string `json:"redacted_fields"`
-	FilePath             string   `json:"file_path,omitempty"`
-	DiffStats            string   `json:"diff_stats,omitempty"`
-	Command              string   `json:"command,omitempty"`
-	ExitCode             *int     `json:"exit_code,omitempty"`
-	CommandOutputPreview string   `json:"command_output_preview,omitempty"`
-	MCPServer            string   `json:"mcp_server,omitempty"`
-	MCPTool              string   `json:"mcp_tool,omitempty"`
-	DurationMS           *int64   `json:"duration_ms,omitempty"`
-	WorkingDirectory     string   `json:"working_directory,omitempty"`
-	GitBranch            string   `json:"git_branch,omitempty"`
-	DeveloperEmail       string   `json:"developer_email,omitempty"`
+	Schema               string              `json:"$schema"`
+	SchemaVersion        string              `json:"schema_version"`
+	ID                   string              `json:"id"`
+	SessionID            string              `json:"session_id"`
+	Sequence             int                 `json:"sequence"`
+	Timestamp            string              `json:"timestamp"`
+	CapturedAt           string              `json:"captured_at"`
+	InvocationID         string              `json:"invocation_id,omitempty"`
+	Source               string              `json:"source"`
+	SourceVersion        string              `json:"source_version"`
+	AgentName            string              `json:"agent_name"`
+	AgentVersion         string              `json:"agent_version,omitempty"`
+	Model                string              `json:"model,omitempty"`
+	Provider             string              `json:"provider,omitempty"`
+	HookPhase            string              `json:"hook_phase"`
+	ActionType           string              `json:"action_type"`
+	ToolName             string              `json:"tool_name,omitempty"`
+	ResultStatus         string              `json:"result_status,omitempty"`
+	Outcome              string              `json:"outcome"`
+	PermissionStatus     string              `json:"permission_status"`
+	ExecutionStatus      string              `json:"execution_status"`
+	PrivacyMode          string              `json:"privacy_mode"`
+	Completeness         events.Completeness `json:"completeness"`
+	IsSensitive          bool                `json:"is_sensitive"`
+	RedactedFields       []string            `json:"redacted_fields"`
+	FilePath             string              `json:"file_path,omitempty"`
+	ContentHash          string              `json:"content_hash,omitempty"`
+	DiffStats            string              `json:"diff_stats,omitempty"`
+	Command              string              `json:"command,omitempty"`
+	ExitCode             *int                `json:"exit_code,omitempty"`
+	CommandOutputPreview string              `json:"command_output_preview,omitempty"`
+	MCPServer            string              `json:"mcp_server,omitempty"`
+	MCPTool              string              `json:"mcp_tool,omitempty"`
+	DurationMS           *int64              `json:"duration_ms,omitempty"`
+	WorkingDirectory     string              `json:"working_directory,omitempty"`
+	GitBranch            string              `json:"git_branch,omitempty"`
+	DeveloperEmail       string              `json:"developer_email,omitempty"`
+	RawEventHash         string              `json:"raw_event_hash"`
 }
 
 // QueryEvents returns the most recent matching events in chronological order.
@@ -97,15 +110,19 @@ func (d *DB) QueryEvents(filter EventFilter) ([]StoredEvent, error) {
 	}
 	args = append(args, limit)
 	query := `
-		SELECT id, session_id, sequence, timestamp, source, agent_name, hook_phase,
+		SELECT id, session_id, sequence, timestamp, COALESCE(schema_version, ''), COALESCE(captured_at, ''), COALESCE(invocation_id, ''),
+		       source, COALESCE(source_version, ''), agent_name, COALESCE(agent_version, ''),
+		       COALESCE(model, ''), COALESCE(provider, ''), hook_phase,
 		       action_type, COALESCE(tool_name, ''), COALESCE(result_status, ''),
+		       COALESCE(outcome, ''), COALESCE(permission_status, ''), COALESCE(execution_status, ''),
+		       COALESCE(privacy_mode, ''), COALESCE(completeness_state, ''), COALESCE(completeness_reasons, '[]'),
 		       is_sensitive, COALESCE(redacted_fields, '[]'),
-		       COALESCE(file_path, ''), COALESCE(diff_stats, ''),
+		       COALESCE(file_path, ''), COALESCE(content_hash, ''), COALESCE(diff_stats, ''),
 		       COALESCE(command, ''), exit_code,
 		       COALESCE(command_output_preview, ''),
 		       COALESCE(mcp_server, ''), COALESCE(mcp_tool, ''), duration_ms,
 		       COALESCE(report_working_directory, ''), COALESCE(git_branch, ''),
-		       COALESCE(developer_email, '')
+		       COALESCE(developer_email, ''), COALESCE(raw_event_hash, '')
 		FROM (
 			SELECT events.*,
 			       COALESCE(events.working_directory,
@@ -128,22 +145,31 @@ func (d *DB) QueryEvents(filter EventFilter) ([]StoredEvent, error) {
 		var e StoredEvent
 		var sensitive int
 		var redacted string
+		var completenessReasons string
 		var exitCode sql.NullInt64
 		var duration sql.NullInt64
 		if err := rows.Scan(
-			&e.ID, &e.SessionID, &e.Sequence, &e.Timestamp, &e.Source, &e.AgentName,
+			&e.ID, &e.SessionID, &e.Sequence, &e.Timestamp, &e.SchemaVersion, &e.CapturedAt, &e.InvocationID,
+			&e.Source, &e.SourceVersion, &e.AgentName, &e.AgentVersion, &e.Model, &e.Provider,
 			&e.HookPhase, &e.ActionType, &e.ToolName, &e.ResultStatus,
-			&sensitive, &redacted, &e.FilePath, &e.DiffStats, &e.Command,
+			&e.Outcome, &e.PermissionStatus, &e.ExecutionStatus, &e.PrivacyMode,
+			&e.Completeness.State, &completenessReasons,
+			&sensitive, &redacted, &e.FilePath, &e.ContentHash, &e.DiffStats, &e.Command,
 			&exitCode, &e.CommandOutputPreview, &e.MCPServer, &e.MCPTool,
-			&duration, &e.WorkingDirectory, &e.GitBranch, &e.DeveloperEmail,
+			&duration, &e.WorkingDirectory, &e.GitBranch, &e.DeveloperEmail, &e.RawEventHash,
 		); err != nil {
 			return nil, fmt.Errorf("scan event: %w", err)
 		}
-		e.Schema = events.SchemaURL
-		e.SchemaVersion = events.SchemaVersion
+		if e.SchemaVersion == events.SchemaVersion {
+			e.Schema = events.SchemaURL
+		} else {
+			e.Schema = "https://schema.secuarden.ai/v1/event.schema.json"
+			e.SchemaVersion = "1.0.0"
+		}
 		e.IsSensitive = sensitive == 1
 		e.RedactedFields = make([]string, 0)
 		_ = json.Unmarshal([]byte(redacted), &e.RedactedFields)
+		_ = json.Unmarshal([]byte(completenessReasons), &e.Completeness.Reasons)
 		if exitCode.Valid {
 			v := int(exitCode.Int64)
 			e.ExitCode = &v
@@ -245,14 +271,17 @@ type RecentSession struct {
 	EventCount   int    `json:"event_count"`
 	FilesChanged int    `json:"files_changed"`
 	Warnings     int    `json:"warnings"`
+	Completeness string `json:"completeness"`
+	FailureCount int    `json:"capture_failure_count"`
 }
 
 // StatusSummary is the captured-data portion of the status presentation.
 type StatusSummary struct {
-	Agent          string             `json:"agent"`
-	Today          ActivityCounts     `json:"today"`
-	Attention      []AttentionFinding `json:"attention"`
-	RecentSessions []RecentSession    `json:"recent_sessions"`
+	Agent           string             `json:"agent"`
+	Today           ActivityCounts     `json:"today"`
+	Attention       []AttentionFinding `json:"attention"`
+	RecentSessions  []RecentSession    `json:"recent_sessions"`
+	CaptureFailures int                `json:"capture_failures"`
 }
 
 // GetStatusSummary aggregates activity in [dayStart, dayEnd).
@@ -263,6 +292,9 @@ func (d *DB) GetStatusSummary(dayStart, dayEnd time.Time, recentLimit int) (*Sta
 	}
 	s := &StatusSummary{
 		Attention: make([]AttentionFinding, 0), RecentSessions: make([]RecentSession, 0),
+	}
+	if err := d.db.QueryRow(`SELECT COUNT(*) FROM capture_failures WHERE occurred_at>=? AND occurred_at<?`, dayStart.UTC().Format(time.RFC3339Nano), dayEnd.UTC().Format(time.RFC3339Nano)).Scan(&s.CaptureFailures); err != nil {
+		return nil, err
 	}
 	read, changed := map[string]struct{}{}, map[string]struct{}{}
 	sessions := map[string]struct{}{}
@@ -300,6 +332,7 @@ func (d *DB) GetStatusSummary(dayStart, dayEnd time.Time, recentLimit int) (*Sta
 		SELECT s.id,
 		       COALESCE(s.git_branch, ''), COALESCE(s.working_directory, ''), COALESCE(s.agent_name, ''),
 		       s.started_at, COALESCE(s.ended_at, ''),
+		       COALESCE(s.completeness_state,'complete'), COALESCE(s.capture_failure_count,0),
 		       (SELECT COUNT(*) FROM events e WHERE e.session_id = s.id),
 		       (SELECT COUNT(DISTINCT e.file_path) FROM events e
 		        WHERE e.session_id = s.id AND e.action_type IN ('file_write', 'file_delete')
@@ -316,7 +349,7 @@ func (d *DB) GetStatusSummary(dayStart, dayEnd time.Time, recentLimit int) (*Sta
 	for rows.Next() {
 		var rs RecentSession
 		var branch, workingDir string
-		if err := rows.Scan(&rs.ID, &branch, &workingDir, &rs.Agent, &rs.StartedAt, &rs.EndedAt,
+		if err := rows.Scan(&rs.ID, &branch, &workingDir, &rs.Agent, &rs.StartedAt, &rs.EndedAt, &rs.Completeness, &rs.FailureCount,
 			&rs.EventCount, &rs.FilesChanged, &rs.Warnings); err != nil {
 			return nil, fmt.Errorf("scan recent session: %w", err)
 		}

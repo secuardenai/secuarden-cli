@@ -1,0 +1,8 @@
+{
+  "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "tool_use_id": "toolu_demo_sensitive_read_01",
+  "tool_name": "Read",
+  "tool_input": {
+    "file_path": ".env.example"
+  }
+}

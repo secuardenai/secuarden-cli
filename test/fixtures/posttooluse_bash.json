@@ -1,5 +1,6 @@
 {
   "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "tool_use_id": "toolu_bash_01",
   "tool_name": "Bash",
   "tool_input": {
     "command": "npm test"

@@ -77,6 +77,100 @@ func TestWriteEvent(t *testing.T) {
 	}
 }
 
+func canonicalToolEvent(id, session, phase, invocation string) *events.Event {
+	outcome, execution := "pending", "not_started"
+	if phase == events.HookPhasePost {
+		outcome, execution = "success", "completed"
+	}
+	completeness := events.Completeness{State: "complete", Reasons: []string{}}
+	if invocation == "" {
+		completeness = events.Completeness{State: "partial", Reasons: []string{"missing_invocation_id"}}
+	}
+	return &events.Event{Schema: events.SchemaURL, SchemaVersion: events.SchemaVersion, ID: id, SessionID: session,
+		Timestamp: "2026-07-31T01:02:03Z", CapturedAt: "2026-07-31T01:02:03Z", InvocationID: invocation,
+		Source: "secuarden-cli", SourceVersion: "test", AgentName: "claude-code", HookPhase: phase,
+		ActionType: events.ActionFileRead, ToolName: "Read", Outcome: outcome, PermissionStatus: "unknown",
+		ExecutionStatus: execution, PrivacyMode: "metadata_only", Completeness: completeness,
+		RedactedFields: []string{}, RawEventHash: strings.Repeat("a", 64)}
+}
+
+func TestPartialEventMissingInvocationPersists(t *testing.T) {
+	db, _ := tempDB(t)
+	_ = db.EnsureSession("partial", "claude-code", "/tmp")
+	if err := db.WriteEvent(canonicalToolEvent("partial-pre", "partial", events.HookPhasePre, "")); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := db.db.QueryRow(`SELECT COUNT(*) FROM events WHERE session_id='partial' AND completeness_state='partial'`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("partial events=%d, want 1", count)
+	}
+}
+
+func TestCaptureFailureAffectsHealthAndCompleteness(t *testing.T) {
+	db, _ := tempDB(t)
+	_ = db.EnsureSession("failed", "claude-code", "/tmp")
+	if err := db.RecordCaptureFailure("failed", "post", "event_persistence_rejected"); err != nil {
+		t.Fatal(err)
+	}
+	var failures int
+	var state, reasons string
+	if err := db.db.QueryRow(`SELECT capture_failure_count, completeness_state, completeness_reasons FROM sessions WHERE id='failed'`).Scan(&failures, &state, &reasons); err != nil {
+		t.Fatal(err)
+	}
+	if failures != 1 || state != "partial" || !strings.Contains(reasons, "capture_error") {
+		t.Fatalf("got failures=%d state=%s reasons=%s", failures, state, reasons)
+	}
+	var category string
+	if err := db.db.QueryRow(`SELECT category FROM capture_failures WHERE session_id='failed'`).Scan(&category); err != nil {
+		t.Fatal(err)
+	}
+	if category != "event_persistence_rejected" {
+		t.Fatalf("unsafe/unexpected category %q", category)
+	}
+}
+
+func TestCaptureFailureSanitizesUntrustedDetails(t *testing.T) {
+	db, _ := tempDB(t)
+	_ = db.EnsureSession("sanitized", "claude-code", "/tmp")
+	secret := "pasted command and token must not survive"
+	if err := db.RecordCaptureFailure("sanitized", secret, secret); err != nil {
+		t.Fatal(err)
+	}
+	var phase, category string
+	if err := db.db.QueryRow(`SELECT hook_phase, category FROM capture_failures WHERE session_id='sanitized'`).Scan(&phase, &category); err != nil {
+		t.Fatal(err)
+	}
+	if phase != "unknown" || category != "capture_error" || strings.Contains(phase+category, secret) {
+		t.Fatalf("unsanitized failure phase=%q category=%q", phase, category)
+	}
+}
+
+func TestReconcileCorrelatedAndUnmatchedEvents(t *testing.T) {
+	db, _ := tempDB(t)
+	_ = db.EnsureSession("pairs", "claude-code", "/tmp")
+	for _, e := range []*events.Event{
+		canonicalToolEvent("pre-pair", "pairs", events.HookPhasePre, "pair"), canonicalToolEvent("post-pair", "pairs", events.HookPhasePost, "pair"),
+		canonicalToolEvent("pre-only", "pairs", events.HookPhasePre, "pre-only"), canonicalToolEvent("post-only", "pairs", events.HookPhasePost, "post-only"),
+	} {
+		if err := db.WriteEvent(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.ReconcileSessionCompleteness("pairs"); err != nil {
+		t.Fatal(err)
+	}
+	var state, reasons string
+	if err := db.db.QueryRow(`SELECT completeness_state, completeness_reasons FROM sessions WHERE id='pairs'`).Scan(&state, &reasons); err != nil {
+		t.Fatal(err)
+	}
+	if state != "partial" || !strings.Contains(reasons, "missing_pre_event") || !strings.Contains(reasons, "missing_post_event") {
+		t.Fatalf("state=%s reasons=%s", state, reasons)
+	}
+}
+
 func TestWriteEventAllocatesIndependentSessionSequences(t *testing.T) {
 	db, _ := tempDB(t)
 	for _, sessionID := range []string{"sess-1", "sess-2"} {

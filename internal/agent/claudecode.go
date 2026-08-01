@@ -24,6 +24,9 @@ type hookMatcher struct {
 
 // secuardenHooks is the configuration block we merge into settings.json.
 var secuardenHooks = map[string][]hookMatcher{
+	"UserPromptSubmit": {
+		{Hooks: []hookEntry{{Type: "command", Command: "secuarden", Args: []string{"hook", "user-prompt-submit"}, Timeout: 5, Async: true}}},
+	},
 	"PreToolUse": {
 		{
 			Matcher: "*",
