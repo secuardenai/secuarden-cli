@@ -1,0 +1,8 @@
+{
+  "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "tool_use_id": "toolu_demo_mcp_01",
+  "tool_name": "mcp__docs__lookup",
+  "tool_input": {
+    "topic": "middleware testing"
+  }
+}

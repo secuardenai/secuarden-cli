@@ -119,6 +119,25 @@ func TestRenderStatusAggregationAndCleanState(t *testing.T) {
 	}
 }
 
+func TestRenderStatusShowsPrivacyAndCaptureFailure(t *testing.T) {
+	view := statusView{
+		DatabasePath: "/tmp/secuarden.db", PrivacyMode: "metadata_only",
+		Summary: &storage.StatusSummary{
+			CaptureFailures: 1,
+			RecentSessions:  []storage.RecentSession{{ID: "partial-session", Label: "demo", Completeness: "partial", FailureCount: 1}},
+		},
+	}
+	var out bytes.Buffer
+	if err := renderStatus(&out, view); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Privacy: metadata_only", "Capture health", "1 event could not be persisted", "partial evidence"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("status missing %q:\n%s", want, out.String())
+		}
+	}
+}
+
 func TestAttentionSuffixesOnlyShowRelevantOutcomes(t *testing.T) {
 	if got := findingSuffix(storage.AttentionFinding{Kind: "sensitive_access", Status: "success", ExitCode: intPointer(0)}); got != "" {
 		t.Fatalf("successful sensitive access suffix = %q, want empty", got)

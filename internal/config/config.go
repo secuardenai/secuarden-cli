@@ -13,11 +13,13 @@ const defaultAPIURL = "https://app.secuarden.ai"
 // Stored at ~/.secuarden/config.json.
 // SyncEnabled = false (default) → local SQLite only, no network calls.
 // SyncEnabled = true           → session-end also POSTs to the SaaS and
-//                                prints developer feedback to stdout.
+//
+//	prints developer feedback to stdout.
 type Config struct {
 	SyncEnabled bool   `json:"sync_enabled"`
 	APIKey      string `json:"api_key,omitempty"`
 	APIURL      string `json:"api_url,omitempty"`
+	PrivacyMode string `json:"privacy_mode,omitempty"`
 }
 
 // DefaultConfigPath returns ~/.secuarden/config.json.
@@ -53,6 +55,12 @@ func Load() (*Config, error) {
 	if cfg.APIURL == "" {
 		cfg.APIURL = defaultAPIURL
 	}
+	if cfg.PrivacyMode == "" {
+		cfg.PrivacyMode = "redacted_content"
+	}
+	if cfg.PrivacyMode != "redacted_content" && cfg.PrivacyMode != "metadata_only" {
+		return &Config{}, fmt.Errorf("privacy_mode must be redacted_content or metadata_only")
+	}
 	return &cfg, nil
 }
 
@@ -67,6 +75,12 @@ func Save(cfg *Config) error {
 	}
 	if cfg.APIURL == "" {
 		cfg.APIURL = defaultAPIURL
+	}
+	if cfg.PrivacyMode == "" {
+		cfg.PrivacyMode = "redacted_content"
+	}
+	if cfg.PrivacyMode != "redacted_content" && cfg.PrivacyMode != "metadata_only" {
+		return fmt.Errorf("privacy_mode must be redacted_content or metadata_only")
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {

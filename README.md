@@ -57,6 +57,9 @@ claude "refactor the auth module"
 # See what was captured
 secuarden status
 
+# Browse the same local records at http://127.0.0.1:8743
+secuarden serve
+
 # Inspect, investigate, and export local activity
 secuarden events --last 20
 secuarden session <session-id>
@@ -65,6 +68,11 @@ secuarden verify
 secuarden bom --since 30d > secuarden-ai-bom.json
 secuarden gate --since 24h --fail-on high
 ```
+
+`secuarden serve` starts a read-only browser view on the local device. It binds
+only to a loopback address, serves assets embedded in the CLI binary, and makes
+no external network requests. Use `--address 127.0.0.1:<port>` to select a
+different local port.
 
 ### With SaaS sync (recommended for teams)
 
@@ -188,7 +196,7 @@ Secuarden Capture Agent v0.1.0
 Capture: Active · Claude Code
 Database: ~/.secuarden/secuarden.db · 76 KB
 Sync: Local only
-Developer: gaurabb <gaurabb@example.com>
+Developer: Demo Developer <developer@example.invalid>
 
 Today
   3 sessions · 52 actions · 14 files read · 6 files changed
@@ -225,7 +233,7 @@ Secuarden Session
 
 Session ID: a1b2c3
 Agent: Claude Code
-Developer: gaurabb <gaurabb@example.com>
+Developer: Demo Developer <developer@example.invalid>
 Repository: https://example.com/secuarden/secuarden-cli.git
 Branch: main
 Started: 2026-07-19T08:00:00Z

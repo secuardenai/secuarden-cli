@@ -28,6 +28,7 @@ type statusView struct {
 	DatabaseSize  int64
 	Sync          string
 	Developer     string
+	PrivacyMode   string
 	Summary       *storage.StatusSummary
 }
 
@@ -71,7 +72,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	return renderStatus(cmd.OutOrStdout(), statusView{
 		CaptureActive: agent.HooksInstalled(), Agent: summary.Agent,
 		DatabasePath: dbPath, DatabaseSize: fileSize(dbPath), Sync: syncMode,
-		Developer: developer, Summary: summary,
+		Developer: developer, PrivacyMode: cfg.PrivacyMode, Summary: summary,
 	})
 }
 
@@ -89,6 +90,11 @@ func renderStatus(w io.Writer, view statusView) error {
 	fmt.Fprintf(w, "Database: %s · %s\n", homeRelative(view.DatabasePath), formatBytes(view.DatabaseSize))
 	fmt.Fprintf(w, "Sync: %s\n", view.Sync)
 	fmt.Fprintf(w, "Developer: %s\n", view.Developer)
+	privacyMode := view.PrivacyMode
+	if privacyMode == "" {
+		privacyMode = "redacted_content"
+	}
+	fmt.Fprintf(w, "Privacy: %s\n", privacyMode)
 
 	s := view.Summary
 	fmt.Fprintln(w, "\nToday")
@@ -103,7 +109,10 @@ func renderStatus(w io.Writer, view statusView) error {
 	}
 
 	fmt.Fprintln(w, "\nNeeds attention")
-	if len(s.Attention) == 0 {
+	if s.CaptureFailures > 0 {
+		fmt.Fprintf(w, "  ⚠ Capture health     %s could not be persisted; affected sessions are partial\n", countNoun(s.CaptureFailures, "event"))
+	}
+	if len(s.Attention) == 0 && s.CaptureFailures == 0 {
 		fmt.Fprintln(w, "  None detected in today's captured activity.")
 	} else {
 		for _, finding := range s.Attention {
@@ -122,6 +131,9 @@ func renderStatus(w io.Writer, view statusView) error {
 				changes = "no changes"
 			}
 			attention := "clean"
+			if session.Completeness == "partial" {
+				attention = "partial evidence"
+			}
 			if session.Warnings == 1 {
 				attention = "1 warning"
 			} else if session.Warnings > 1 {

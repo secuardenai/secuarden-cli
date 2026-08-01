@@ -64,6 +64,22 @@ func Open(path string) (*DB, error) {
 		"ALTER TABLE events ADD COLUMN previous_event_hash TEXT",
 		"ALTER TABLE events ADD COLUMN event_hash TEXT",
 		"ALTER TABLE sessions ADD COLUMN session_hash TEXT",
+		"ALTER TABLE events ADD COLUMN captured_at TEXT",
+		"ALTER TABLE events ADD COLUMN schema_version TEXT",
+		"ALTER TABLE events ADD COLUMN invocation_id TEXT",
+		"ALTER TABLE events ADD COLUMN agent_version TEXT",
+		"ALTER TABLE events ADD COLUMN model TEXT",
+		"ALTER TABLE events ADD COLUMN provider TEXT",
+		"ALTER TABLE events ADD COLUMN outcome TEXT",
+		"ALTER TABLE events ADD COLUMN permission_status TEXT",
+		"ALTER TABLE events ADD COLUMN execution_status TEXT",
+		"ALTER TABLE events ADD COLUMN privacy_mode TEXT",
+		"ALTER TABLE events ADD COLUMN completeness_state TEXT",
+		"ALTER TABLE events ADD COLUMN completeness_reasons TEXT",
+		"ALTER TABLE sessions ADD COLUMN capture_failure_count INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE sessions ADD COLUMN completeness_state TEXT NOT NULL DEFAULT 'complete'",
+		"ALTER TABLE sessions ADD COLUMN completeness_reasons TEXT NOT NULL DEFAULT '[]'",
+		"ALTER TABLE sessions ADD COLUMN privacy_mode TEXT NOT NULL DEFAULT 'redacted_content'",
 	} {
 		if _, err := db.Exec(migration); err != nil && !isDuplicateColumnError(err) {
 			db.Close()
@@ -134,6 +150,103 @@ func (d *DB) EndSession(sessionID string) error {
 		WHERE id = ?`,
 		now, sessionID, sessionID,
 	)
+	if err != nil {
+		return err
+	}
+	return d.ReconcileSessionCompleteness(sessionID)
+}
+
+// RecordCaptureFailure stores only a safe category, never hook payload or raw
+// error text, and makes the failure visible on the associated session.
+func (d *DB) RecordCaptureFailure(sessionID, hookPhase, category string) error {
+	switch category {
+	case "event_persistence_rejected", "capture_error":
+	default:
+		category = "capture_error"
+	}
+	switch hookPhase {
+	case events.HookPhasePre, events.HookPhasePost, events.HookPhaseSessionStart, events.HookPhaseSessionEnd, events.HookPhaseIntent:
+	default:
+		hookPhase = "unknown"
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`INSERT INTO capture_failures(session_id, hook_phase, category, occurred_at) VALUES(NULLIF(?,''),?,?,?)`, sessionID, hookPhase, category, now); err != nil {
+		return err
+	}
+	if sessionID != "" {
+		if _, err = tx.Exec(`UPDATE sessions SET capture_failure_count=capture_failure_count+1, completeness_state='partial', completeness_reasons='["capture_error"]' WHERE id=?`, sessionID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// ReconcileSessionCompleteness derives missing lifecycle halves and capture failures.
+func (d *DB) ReconcileSessionCompleteness(sessionID string) error {
+	reasons := map[string]bool{}
+	rows, err := d.db.Query(`SELECT COALESCE(invocation_id,''), hook_phase, COALESCE(completeness_reasons,'[]') FROM events WHERE session_id=? AND hook_phase IN ('pre','post')`, sessionID)
+	if err != nil {
+		return err
+	}
+	pairs := map[string]map[string]bool{}
+	for rows.Next() {
+		var invocation, phase, encoded string
+		if err := rows.Scan(&invocation, &phase, &encoded); err != nil {
+			rows.Close()
+			return err
+		}
+		var eventReasons []string
+		_ = json.Unmarshal([]byte(encoded), &eventReasons)
+		for _, reason := range eventReasons {
+			reasons[reason] = true
+		}
+		if invocation != "" {
+			if pairs[invocation] == nil {
+				pairs[invocation] = map[string]bool{}
+			}
+			pairs[invocation][phase] = true
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, phases := range pairs {
+		if !phases["pre"] {
+			reasons["missing_pre_event"] = true
+		}
+		if !phases["post"] {
+			reasons["missing_post_event"] = true
+		}
+	}
+	var failures int
+	if err := d.db.QueryRow(`SELECT capture_failure_count FROM sessions WHERE id=?`, sessionID).Scan(&failures); err != nil {
+		return err
+	}
+	if failures > 0 {
+		reasons["capture_error"] = true
+	}
+	ordered := []string{"missing_invocation_id", "missing_pre_event", "missing_post_event", "capture_error"}
+	result := make([]string, 0, len(reasons))
+	for _, reason := range ordered {
+		if reasons[reason] {
+			result = append(result, reason)
+			delete(reasons, reason)
+		}
+	}
+	for reason := range reasons {
+		result = append(result, reason)
+	}
+	state := "complete"
+	if len(result) > 0 {
+		state = "partial"
+	}
+	encoded, _ := json.Marshal(result)
+	_, err = d.db.Exec(`UPDATE sessions SET completeness_state=?, completeness_reasons=? WHERE id=?`, state, string(encoded), sessionID)
 	return err
 }
 
@@ -183,6 +296,11 @@ func (d *DB) WriteEvent(e *events.Event) error {
 	redactedJSON, err := json.Marshal(e.RedactedFields)
 	if err != nil {
 		redactedJSON = []byte("[]")
+	}
+	completenessJSON, _ := json.Marshal(e.Completeness.Reasons)
+	storedSchemaVersion := ""
+	if e.CapturedAt != "" {
+		storedSchemaVersion = e.SchemaVersion
 	}
 
 	var exitCode *int
@@ -238,7 +356,14 @@ func (d *DB) WriteEvent(e *events.Event) error {
 		return fmt.Errorf("allocate event sequence: %w", err)
 	}
 	e.Sequence = sequence
-	eventHash, err := computeEventHashV2(previousHash, e, string(redactedJSON))
+	if e.CapturedAt != "" {
+		if err := events.ValidateProducerInvariants(e); err != nil {
+			return fmt.Errorf("event does not satisfy Stage 1 evidence contract: %w", err)
+		}
+	}
+	hashingEvent := *e
+	hashingEvent.SchemaVersion = storedSchemaVersion
+	eventHash, err := computeEventHashV2(previousHash, &hashingEvent, string(redactedJSON))
 	if err != nil {
 		return fmt.Errorf("hash event: %w", err)
 	}
@@ -285,11 +410,20 @@ func (d *DB) WriteEvent(e *events.Event) error {
 	if err != nil {
 		return eventWriteError("insert event", err)
 	}
+	if _, err := conn.ExecContext(ctx, `UPDATE events SET schema_version=?, captured_at=?, invocation_id=?, agent_version=?, model=?, provider=?,
+		outcome=?, permission_status=?, execution_status=?, privacy_mode=?, completeness_state=?, completeness_reasons=? WHERE id=?`,
+		nullStr(storedSchemaVersion), nullStr(e.CapturedAt), nullStr(e.InvocationID), nullStr(e.AgentVersion), nullStr(e.Model), nullStr(e.Provider),
+		nullStr(e.Outcome), nullStr(e.PermissionStatus), nullStr(e.ExecutionStatus), nullStr(e.PrivacyMode),
+		nullStr(e.Completeness.State), string(completenessJSON), e.ID); err != nil {
+		return eventWriteError("store Stage 1 evidence fields", err)
+	}
 
 	// Keep event_count in sessions up to date
 	if _, err := conn.ExecContext(ctx,
-		"UPDATE sessions SET event_count = event_count + 1 WHERE id = ?",
-		e.SessionID,
+		`UPDATE sessions SET event_count = event_count + 1, privacy_mode=?,
+		 completeness_state=CASE WHEN ?='partial' THEN 'partial' ELSE completeness_state END,
+		 completeness_reasons=CASE WHEN ?='partial' THEN ? ELSE completeness_reasons END WHERE id = ?`,
+		e.PrivacyMode, e.Completeness.State, e.Completeness.State, string(completenessJSON), e.SessionID,
 	); err != nil {
 		return eventWriteError("update session event count", err)
 	}
@@ -310,7 +444,7 @@ func eventWriteError(operation string, err error) error {
 }
 
 const (
-	eventHashPrefix   = "v2:"
+	eventHashPrefix   = "v3:"
 	sessionHashPrefix = "s1:"
 )
 
@@ -324,13 +458,25 @@ type eventIntegrityRecordV2 struct {
 	SessionID            string `json:"session_id"`
 	Sequence             int    `json:"sequence"`
 	Timestamp            string `json:"timestamp"`
+	SchemaVersion        string `json:"schema_version"`
+	CapturedAt           string `json:"captured_at"`
+	InvocationID         string `json:"invocation_id"`
 	Source               string `json:"source"`
 	SourceVersion        string `json:"source_version"`
 	AgentName            string `json:"agent_name"`
+	AgentVersion         string `json:"agent_version"`
+	Model                string `json:"model"`
+	Provider             string `json:"provider"`
 	HookPhase            string `json:"hook_phase"`
 	ActionType           string `json:"action_type"`
 	ToolName             string `json:"tool_name"`
 	ResultStatus         string `json:"result_status"`
+	Outcome              string `json:"outcome"`
+	PermissionStatus     string `json:"permission_status"`
+	ExecutionStatus      string `json:"execution_status"`
+	PrivacyMode          string `json:"privacy_mode"`
+	CompletenessState    string `json:"completeness_state"`
+	CompletenessReasons  string `json:"completeness_reasons"`
 	IsSensitive          bool   `json:"is_sensitive"`
 	RedactedFields       string `json:"redacted_fields"`
 	FilePath             string `json:"file_path"`
@@ -350,12 +496,17 @@ type eventIntegrityRecordV2 struct {
 }
 
 func computeEventHashV2(previous string, e *events.Event, redactedFields string) (string, error) {
+	completenessReasons, _ := json.Marshal(e.Completeness.Reasons)
 	return hashCanonicalJSON(eventHashPrefix, eventIntegrityRecordV2{
 		FormatVersion: 2, PreviousEventHash: previous,
-		ID: e.ID, SessionID: e.SessionID, Sequence: e.Sequence, Timestamp: e.Timestamp,
+		ID: e.ID, SessionID: e.SessionID, Sequence: e.Sequence, Timestamp: e.Timestamp, SchemaVersion: e.SchemaVersion,
+		CapturedAt: e.CapturedAt, InvocationID: e.InvocationID,
 		Source: e.Source, SourceVersion: e.SourceVersion, AgentName: e.AgentName,
+		AgentVersion: e.AgentVersion, Model: e.Model, Provider: e.Provider,
 		HookPhase: e.HookPhase, ActionType: e.ActionType, ToolName: e.ToolName,
-		ResultStatus: e.ResultStatus, IsSensitive: e.IsSensitive,
+		ResultStatus: e.ResultStatus, Outcome: e.Outcome, PermissionStatus: e.PermissionStatus,
+		ExecutionStatus: e.ExecutionStatus, PrivacyMode: e.PrivacyMode,
+		CompletenessState: e.Completeness.State, CompletenessReasons: string(completenessReasons), IsSensitive: e.IsSensitive,
 		RedactedFields: redactedFields, FilePath: e.FilePath, ContentHash: e.ContentHash,
 		DiffStats: e.DiffStats, Command: e.Command, ExitCode: e.ExitCode,
 		CommandOutputPreview: e.CommandOutputPreview, MCPServer: e.MCPServer,
@@ -486,9 +637,13 @@ func (d *DB) ListWriteProvenance(since time.Time) ([]ProvenanceRecord, error) {
 
 // VerifyIntegrity recomputes every session chain without reading source files.
 func (d *DB) VerifyIntegrity() (*IntegrityResult, error) {
-	rows, err := d.db.Query(`SELECT id, session_id, sequence, timestamp,
-		source, COALESCE(source_version, ''), agent_name, hook_phase, action_type,
+	rows, err := d.db.Query(`SELECT id, session_id, sequence, timestamp, COALESCE(schema_version, ''),
+		COALESCE(captured_at, ''), COALESCE(invocation_id, ''),
+		source, COALESCE(source_version, ''), agent_name,
+		COALESCE(agent_version, ''), COALESCE(model, ''), COALESCE(provider, ''), hook_phase, action_type,
 		COALESCE(tool_name, ''), COALESCE(result_status, ''), is_sensitive,
+		COALESCE(outcome, ''), COALESCE(permission_status, ''), COALESCE(execution_status, ''),
+		COALESCE(privacy_mode, ''), COALESCE(completeness_state, ''), COALESCE(completeness_reasons, '[]'),
 		COALESCE(redacted_fields, 'null'), COALESCE(file_path, ''),
 		COALESCE(content_hash, ''), COALESCE(diff_stats, ''),
 		COALESCE(command, ''), exit_code, COALESCE(command_output_preview, ''),
@@ -506,13 +661,14 @@ func (d *DB) VerifyIntegrity() (*IntegrityResult, error) {
 	previous := map[string]string{}
 	for rows.Next() {
 		var e events.Event
-		var redactedFields, storedPrevious, storedHash string
+		var redactedFields, completenessReasons, storedPrevious, storedHash string
 		var sensitive int
 		var exitCode, durationMS sql.NullInt64
 		if err := rows.Scan(
-			&e.ID, &e.SessionID, &e.Sequence, &e.Timestamp, &e.Source,
-			&e.SourceVersion, &e.AgentName, &e.HookPhase, &e.ActionType,
-			&e.ToolName, &e.ResultStatus, &sensitive, &redactedFields,
+			&e.ID, &e.SessionID, &e.Sequence, &e.Timestamp, &e.SchemaVersion, &e.CapturedAt, &e.InvocationID, &e.Source,
+			&e.SourceVersion, &e.AgentName, &e.AgentVersion, &e.Model, &e.Provider, &e.HookPhase, &e.ActionType,
+			&e.ToolName, &e.ResultStatus, &sensitive, &e.Outcome, &e.PermissionStatus, &e.ExecutionStatus,
+			&e.PrivacyMode, &e.Completeness.State, &completenessReasons, &redactedFields,
 			&e.FilePath, &e.ContentHash, &e.DiffStats, &e.Command, &exitCode,
 			&e.CommandOutputPreview, &e.MCPServer, &e.MCPTool, &durationMS,
 			&e.WorkingDirectory, &e.GitBranch, &e.DeveloperEmail,
@@ -521,6 +677,7 @@ func (d *DB) VerifyIntegrity() (*IntegrityResult, error) {
 			return nil, err
 		}
 		e.IsSensitive = sensitive == 1
+		_ = json.Unmarshal([]byte(completenessReasons), &e.Completeness.Reasons)
 		if exitCode.Valid {
 			value := int(exitCode.Int64)
 			e.ExitCode = &value

@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/spf13/cobra"
 	"github.com/secuardenai/secuarden-cli/internal/capture"
+	"github.com/spf13/cobra"
 )
 
 // hookCmd is hidden from --help; it's invoked by Claude Code hooks only.
@@ -44,9 +44,15 @@ var sessionEndCmd = &cobra.Command{
 	},
 }
 
+var userPromptSubmitCmd = &cobra.Command{
+	Use: "user-prompt-submit", Hidden: true,
+	Run: func(cmd *cobra.Command, args []string) { capture.HandleHookEvent("user-prompt-submit", Version) },
+}
+
 func init() {
 	hookCmd.AddCommand(preToolUseCmd)
 	hookCmd.AddCommand(postToolUseCmd)
 	hookCmd.AddCommand(sessionStartCmd)
 	hookCmd.AddCommand(sessionEndCmd)
+	hookCmd.AddCommand(userPromptSubmitCmd)
 }

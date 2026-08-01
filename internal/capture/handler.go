@@ -84,9 +84,17 @@ func handle(phase, version string) error {
 	}
 
 	// 7–8. Privacy: sensitive check and/or redaction
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	privacyMode := cfg.PrivacyMode
+	if privacyMode == "" {
+		privacyMode = "redacted_content"
+	}
 	isSensitive := false
 	var redactedFields []string
-	contentHash := computeFileHash(filePath)
+	contentHash := computeFileHash(resolveFilePath(raw.CWD, filePath))
 
 	if filePath != "" {
 		isSensitive = privacy.IsSensitivePath(filePath)
@@ -107,6 +115,23 @@ func handle(phase, version string) error {
 		command = scrubbed["command"]
 		outputPreview = scrubbed["command_output_preview"]
 		redactedFields = names
+	}
+	intentSummary := ""
+	if hookPhase == events.HookPhaseIntent && raw.Prompt != "" {
+		var intentMatches []string
+		intentSummary, intentMatches = privacy.Redact(raw.Prompt)
+		if len(intentMatches) > 0 {
+			redactedFields = append(redactedFields, "intent_summary")
+		}
+	}
+	if privacyMode == "metadata_only" {
+		command = ""
+		outputPreview = ""
+		diffStats = ""
+		intentSummary = ""
+		// MCP tool arguments and response content are never mapped. In metadata
+		// mode retain only the structural server/tool identifiers.
+		redactedFields = []string{}
 	}
 
 	// 9. Developer identity (cached after first call for speed)
@@ -158,20 +183,39 @@ func handle(phase, version string) error {
 	// 12. Insert event. Storage allocates its per-session sequence atomically
 	// with the previous-hash lookup and insert.
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	eventTime := raw.Timestamp
+	if eventTime == "" {
+		eventTime = now
+	}
+	outcome, permissionStatus, executionStatus := outcomeForPhase(hookPhase, resultStatus)
+	completeness := events.Completeness{State: "complete", Reasons: []string{}}
+	if (hookPhase == events.HookPhasePre || hookPhase == events.HookPhasePost) && raw.ToolUseID == "" {
+		completeness = events.Completeness{State: "partial", Reasons: []string{"missing_invocation_id"}}
+	}
 
 	e := &events.Event{
 		Schema:               events.SchemaURL,
 		SchemaVersion:        events.SchemaVersion,
 		ID:                   eventID,
 		SessionID:            sessionID,
-		Timestamp:            now,
+		Timestamp:            eventTime,
+		CapturedAt:           now,
+		InvocationID:         raw.ToolUseID,
 		Source:               "secuarden-cli",
 		SourceVersion:        version,
 		AgentName:            agentName,
+		AgentVersion:         raw.AgentVersion,
+		Model:                raw.Model,
+		Provider:             "anthropic",
 		HookPhase:            hookPhase,
 		ActionType:           actionType,
 		ToolName:             toolName,
 		ResultStatus:         resultStatus,
+		Outcome:              outcome,
+		PermissionStatus:     permissionStatus,
+		ExecutionStatus:      executionStatus,
+		PrivacyMode:          privacyMode,
+		Completeness:         completeness,
 		IsSensitive:          isSensitive,
 		RedactedFields:       redactedFields,
 		FilePath:             filePath,
@@ -184,18 +228,20 @@ func handle(phase, version string) error {
 		MCPTool:              mcpTool,
 		WorkingDirectory:     cwd,
 		RawEventHash:         rawHash,
+		IntentSummary:        intentSummary,
 	}
 
 	if dev != nil {
+		gitRepoURL, _ := privacy.Redact(dev.GitRepo)
 		e.DeveloperName = dev.Name
 		e.DeveloperEmail = dev.Email
 		e.OSUser = dev.OSUser
 		e.MachineID = dev.MachineID
 		e.GitBranch = dev.GitBranch
-		e.GitRepoURL = dev.GitRepo
+		e.GitRepoURL = gitRepoURL
 	}
-
 	if err := db.WriteEvent(e); err != nil {
+		_ = db.RecordCaptureFailure(sessionID, hookPhase, "event_persistence_rejected")
 		return err
 	}
 
@@ -219,6 +265,8 @@ func normalizePhase(phase string) string {
 		return events.HookPhaseSessionStart
 	case "session-end":
 		return events.HookPhaseSessionEnd
+	case "user-prompt-submit":
+		return events.HookPhaseIntent
 	default:
 		return phase
 	}
@@ -230,8 +278,31 @@ func mapPhaseToAction(phase, toolName string) string {
 		return events.ActionSessionStart
 	case events.HookPhaseSessionEnd:
 		return events.ActionSessionEnd
+	case events.HookPhaseIntent:
+		return events.ActionDeveloperIntent
 	default:
 		return events.MapToolToAction(toolName)
+	}
+}
+
+func resolveFilePath(cwd, path string) string {
+	if path == "" || filepath.IsAbs(path) || cwd == "" {
+		return path
+	}
+	return filepath.Join(cwd, path)
+}
+
+func outcomeForPhase(phase, result string) (string, string, string) {
+	switch phase {
+	case events.HookPhasePre:
+		return "pending", "unknown", "not_started"
+	case events.HookPhasePost:
+		if result == events.ResultError {
+			return "error", "unknown", "failed"
+		}
+		return "success", "unknown", "completed"
+	default:
+		return "success", "not_applicable", "completed"
 	}
 }
 

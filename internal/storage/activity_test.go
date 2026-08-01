@@ -59,8 +59,8 @@ func TestQueryEventsCombinedFiltersAndOrdering(t *testing.T) {
 	if len(got) != 1 || got[0].ID != "e5" || !got[0].IsSensitive {
 		t.Fatalf("unexpected filtered events: %#v", got)
 	}
-	if got[0].Schema != events.SchemaURL || got[0].SchemaVersion != events.SchemaVersion || got[0].Source != "secuarden-cli" {
-		t.Fatalf("missing schema metadata: %#v", got[0])
+	if got[0].Schema != "https://schema.secuarden.ai/v1/event.schema.json" || got[0].SchemaVersion != "1.0.0" || got[0].Source != "secuarden-cli" {
+		t.Fatalf("legacy event was not explicitly classified: %#v", got[0])
 	}
 	latest, err := db.QueryEvents(EventFilter{Limit: 2})
 	if err != nil {

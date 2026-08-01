@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Secuarden Local Evidence</title>
+  <meta name="description" content="A local, read-only view of Secuarden evidence records.">
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">S</span><span>SECUARDEN</span></div>
+    <div class="local-badge"><span></span> Local evidence only</div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Evidence ledger</p>
+        <h1>What your coding agent did,<br><em>captured locally.</em></h1>
+        <p class="lede">A read-only view of the evidence stored by this Secuarden CLI. Nothing on this page is uploaded.</p>
+      </div>
+      <button id="refresh" class="refresh" type="button">Refresh records</button>
+    </section>
+
+    <section class="metrics" aria-label="Today's capture summary">
+      <article><span>Sessions today</span><strong id="sessions-count">—</strong></article>
+      <article><span>Actions captured</span><strong id="actions-count">—</strong></article>
+      <article><span>Files changed</span><strong id="files-count">—</strong></article>
+      <article><span>Capture failures</span><strong id="failures-count">—</strong></article>
+    </section>
+
+    <section class="workspace">
+      <aside>
+        <div class="section-heading"><div><p class="eyebrow">Sessions</p><h2>Recent activity</h2></div></div>
+        <div id="session-list" class="session-list" aria-live="polite"></div>
+      </aside>
+
+      <div class="ledger">
+        <div class="section-heading ledger-heading">
+          <div><p class="eyebrow">Records</p><h2>Evidence stream</h2></div>
+          <span id="record-count" class="record-count">0 records</span>
+        </div>
+        <div class="filters">
+          <label>Action
+            <select id="action-filter">
+              <option value="">All actions</option>
+              <option value="file_read">File read</option>
+              <option value="file_write">File write</option>
+              <option value="command_exec">Command</option>
+              <option value="mcp_tool_use">MCP tool</option>
+              <option value="developer_intent">Developer intent</option>
+              <option value="session_start">Session start</option>
+              <option value="session_end">Session end</option>
+            </select>
+          </label>
+          <label class="check"><input id="sensitive-filter" type="checkbox"> Sensitive only</label>
+          <button id="clear-session" class="clear-filter" type="button" hidden>Clear session filter</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>Action</th><th>Evidence</th><th>Outcome</th><th>Completeness</th></tr></thead>
+            <tbody id="event-list"></tbody>
+          </table>
+          <div id="empty-state" class="empty" hidden>No evidence matches these filters.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer><span id="version">Secuarden</span><span id="updated">Waiting for local records</span></footer>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

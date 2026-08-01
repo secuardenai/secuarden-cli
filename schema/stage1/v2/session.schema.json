@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schema.secuarden.ai/stage1/2.0/session.schema.json",
+  "title": "Secuarden Stage 1 Evidence Session",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "session_id", "agent_name", "privacy_mode", "completeness", "captured_event_count"],
+  "properties": {
+    "schema_version": {"const": "2.0.0"},
+    "session_id": {"type": "string", "minLength": 1},
+    "agent_name": {"enum": ["claude-code", "unknown"]},
+    "agent_version": {"type": "string"}, "model": {"type": "string"}, "provider": {"type": "string"},
+    "repository": {"type": "string"}, "branch": {"type": "string"}, "commit_sha": {"type": "string"},
+    "developer_email": {"type": "string"},
+    "privacy_mode": {"enum": ["metadata_only", "redacted_content", "approved_content"]},
+    "completeness": {"enum": ["complete", "partial", "summary_only", "legacy_unverified"]},
+    "completeness_reasons": {"type": "array", "items": {"type": "string"}},
+    "captured_event_count": {"type": "integer", "minimum": 0},
+    "uploaded_event_count": {"type": "integer", "minimum": 0},
+    "accepted_event_count": {"type": "integer", "minimum": 0}
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schema.secuarden.ai/stage1/2.0/event.schema.json",
+  "title": "Secuarden Stage 1 Evidence Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schema_version", "id", "session_id", "sequence", "timestamp", "captured_at", "source", "source_version", "agent_name", "hook_phase", "action_type", "outcome", "permission_status", "execution_status", "privacy_mode", "is_sensitive", "redacted_fields", "completeness", "raw_event_hash"],
+  "properties": {
+    "$schema": {"const": "https://schema.secuarden.ai/stage1/2.0/event.schema.json"},
+    "schema_version": {"const": "2.0.0"},
+    "id": {"type": "string", "format": "uuid"},
+    "session_id": {"type": "string", "minLength": 1},
+    "sequence": {"type": "integer", "minimum": 1},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "invocation_id": {"type": "string", "minLength": 1},
+    "source": {"const": "secuarden-cli"},
+    "source_version": {"type": "string", "minLength": 1},
+    "agent_name": {"enum": ["claude-code", "unknown"]},
+    "agent_version": {"type": "string"},
+    "model": {"type": "string"},
+    "provider": {"type": "string"},
+    "hook_phase": {"enum": ["pre", "post", "session_start", "session_end", "intent"]},
+    "action_type": {"enum": ["file_read", "file_write", "file_delete", "command_exec", "network_request", "mcp_tool_use", "subagent_spawn", "plan", "session_start", "session_end", "developer_intent", "notification", "unknown"]},
+    "tool_name": {"type": "string"},
+    "result_status": {"enum": ["success", "error", "blocked", "rejected", "unknown"]},
+    "outcome": {"enum": ["pending", "success", "error", "blocked", "rejected", "cancelled", "timed_out", "unknown"]},
+    "permission_status": {"enum": ["unknown", "allowed", "denied", "not_applicable"]},
+    "execution_status": {"enum": ["not_started", "running", "completed", "failed", "cancelled", "timed_out", "unknown"]},
+    "privacy_mode": {"enum": ["metadata_only", "redacted_content", "approved_content"]},
+    "is_sensitive": {"type": "boolean"},
+    "redacted_fields": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "file_path": {"type": "string"},
+    "content_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "diff_stats": {"type": "string", "pattern": "^\\+[0-9]+/-[0-9]+$"},
+    "command": {"type": "string"},
+    "exit_code": {"type": "integer"},
+    "command_output_preview": {"type": "string", "maxLength": 500},
+    "mcp_server": {"type": "string"},
+    "mcp_tool": {"type": "string"},
+    "duration_ms": {"type": "integer", "minimum": 0},
+    "working_directory": {"type": "string"},
+    "git_repo_url": {"type": "string"},
+    "git_branch": {"type": "string"},
+    "developer_name": {"type": "string"},
+    "developer_email": {"type": "string"},
+    "os_user": {"type": "string"},
+    "machine_id": {"type": "string"},
+    "intent_summary": {"type": "string"},
+    "raw_event_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "completeness": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state", "reasons"],
+      "properties": {
+        "state": {"enum": ["complete", "partial"]},
+        "reasons": {"type": "array", "uniqueItems": true, "items": {"enum": ["missing_invocation_id", "missing_pre_event", "missing_post_event", "adapter_field_unavailable", "capture_error", "legacy_event", "summary_only"]}}
+      }
+    }
+  },
+  "allOf": [
+    {"if": {"required": ["hook_phase"], "properties": {"hook_phase": {"enum": ["pre", "post"]}}}, "then": {"required": ["tool_name"], "anyOf": [
+      {"required": ["invocation_id"]},
+      {"not": {"required": ["invocation_id"]}, "properties": {"completeness": {"properties": {"state": {"const": "partial"}, "reasons": {"contains": {"const": "missing_invocation_id"}}}}}}
+    ]}},
+    {"if": {"required": ["invocation_id"]}, "then": {"properties": {"completeness": {"properties": {"reasons": {"not": {"contains": {"const": "missing_invocation_id"}}}}}}}},
+    {"if": {"properties": {"completeness": {"properties": {"reasons": {"contains": {"const": "missing_invocation_id"}}}}}}, "then": {"properties": {"hook_phase": {"enum": ["pre", "post"]}}, "not": {"required": ["invocation_id"]}}},
+    {"if": {"properties": {"completeness": {"properties": {"state": {"const": "complete"}}}}}, "then": {"properties": {"completeness": {"properties": {"reasons": {"maxItems": 0}}}}}},
+    {"if": {"properties": {"completeness": {"properties": {"state": {"const": "partial"}}}}}, "then": {"properties": {"completeness": {"properties": {"reasons": {"minItems": 1}}}}}},
+    {"if": {"properties": {"privacy_mode": {"const": "metadata_only"}}}, "then": {"not": {"anyOf": [{"required": ["command"]}, {"required": ["command_output_preview"]}, {"required": ["intent_summary"]}]}}}
+  ]
+}

@@ -14,6 +14,11 @@ func ParseHookInput(data []byte) (*RawHookInput, error) {
 		SessionID    string                 `json:"session_id"`
 		Type         string                 `json:"type"`
 		CWD          string                 `json:"cwd"`
+		ToolUseID    string                 `json:"tool_use_id"`
+		Model        string                 `json:"model"`
+		AgentVersion string                 `json:"agent_version"`
+		Timestamp    string                 `json:"timestamp"`
+		Prompt       string                 `json:"prompt"`
 		ToolName     string                 `json:"tool_name"`
 		ToolInput    map[string]interface{} `json:"tool_input"`
 		ToolResponse json.RawMessage        `json:"tool_response"`
@@ -23,11 +28,16 @@ func ParseHookInput(data []byte) (*RawHookInput, error) {
 	}
 
 	raw := &RawHookInput{
-		SessionID: shadow.SessionID,
-		Type:      shadow.Type,
-		CWD:       shadow.CWD,
-		ToolName:  shadow.ToolName,
-		ToolInput: shadow.ToolInput,
+		SessionID:    shadow.SessionID,
+		Type:         shadow.Type,
+		CWD:          shadow.CWD,
+		ToolName:     shadow.ToolName,
+		ToolInput:    shadow.ToolInput,
+		ToolUseID:    shadow.ToolUseID,
+		Model:        shadow.Model,
+		AgentVersion: shadow.AgentVersion,
+		Timestamp:    shadow.Timestamp,
+		Prompt:       shadow.Prompt,
 	}
 
 	if len(shadow.ToolResponse) > 0 {
@@ -165,5 +175,5 @@ func countLines(s string) int {
 
 // ExtractModel extracts the LLM model from session start data.
 func ExtractModel(raw *RawHookInput) string {
-	return ""
+	return raw.Model
 }
