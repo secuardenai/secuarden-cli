@@ -57,6 +57,9 @@ claude "refactor the auth module"
 # See what was captured
 secuarden status
 
+# Browse the same local records at http://127.0.0.1:8743
+secuarden serve
+
 # Inspect, investigate, and export local activity
 secuarden events --last 20
 secuarden session <session-id>
@@ -65,6 +68,11 @@ secuarden verify
 secuarden bom --since 30d > secuarden-ai-bom.json
 secuarden gate --since 24h --fail-on high
 ```
+
+`secuarden serve` starts a read-only browser view on the local device. It binds
+only to a loopback address, serves assets embedded in the CLI binary, and makes
+no external network requests. Use `--address 127.0.0.1:<port>` to select a
+different local port.
 
 ### With SaaS sync (recommended for teams)
 

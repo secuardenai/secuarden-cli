@@ -8,7 +8,7 @@ Run from the repository root on macOS:
 
 The generator:
 
-- builds the current Secuarden source as a `v0.2.0` binary;
+- builds the current Secuarden source with the stable `demo` version label;
 - creates an isolated HOME and Git repository under `/private/tmp/secuarden-terminal-demo`;
 - configures only the synthetic identity `Demo Developer <developer@example.invalid>` and the remote `https://example.invalid/acme/demo-repository.git`;
 - replays the JSON files in `fixtures/` through the binary's real Claude Code hook commands;

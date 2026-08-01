@@ -31,4 +31,5 @@ func init() {
 	rootCmd.AddCommand(bomCmd)
 	rootCmd.AddCommand(gateCmd)
 	rootCmd.AddCommand(syncCmd)
+	rootCmd.AddCommand(serveCmd)
 }

@@ -12,6 +12,9 @@ transcript=$work_root/transcript.txt
 output=$script_dir/secuarden-terminal-demo.gif
 go_module_cache=$(go env GOMODCACHE)
 host_home=$HOME
+host_git_user_name=$(git -C "$repo_root" config user.name 2>/dev/null || true)
+host_git_user_email=$(git -C "$repo_root" config user.email 2>/dev/null || true)
+host_git_remote=$(git -C "$repo_root" remote get-url origin 2>/dev/null || true)
 
 cleanup() {
   rm -rf "$work_root"
@@ -42,7 +45,7 @@ git -C "$demo_repo" config user.email "developer@example.invalid"
 git -C "$demo_repo" remote add origin https://example.invalid/acme/demo-repository.git
 
 CGO_ENABLED=0 go build \
-  -ldflags "-X github.com/secuardenai/secuarden-cli/cmd.Version=v0.2.0" \
+  -ldflags "-X github.com/secuardenai/secuarden-cli/cmd.Version=demo" \
   -o "$binary" "$repo_root/cmd/secuarden"
 
 cd "$demo_repo"
@@ -86,19 +89,24 @@ printf '%s\n' \
   done
 } > "$transcript"
 
-for forbidden in \
-  "$(id -un)" \
-  "$(hostname)" \
-  "$host_home" \
-  "$(git -C "$repo_root" config user.name 2>/dev/null || true)" \
-  "$(git -C "$repo_root" config user.email 2>/dev/null || true)" \
-  "$(git -C "$repo_root" remote get-url origin 2>/dev/null || true)" \
-  "$repo_root"; do
-  if [[ -n "$forbidden" ]] && grep -Fq "$forbidden" "$transcript" "$script_dir"/fixtures/*.json; then
-    echo "privacy audit failed: generated transcript contains host information" >&2
+check_forbidden() {
+  local label=$1
+  local value=$2
+  if [[ -n "$value" ]] && grep -Fq "$value" "$transcript" "$script_dir"/fixtures/*.json; then
+    echo "privacy audit failed: generated transcript contains host information ($label)" >&2
     exit 1
   fi
-done
+}
+
+check_forbidden os-user "$(id -un)"
+check_forbidden hostname "$(hostname)"
+check_forbidden home-directory "$host_home"
+if [[ "$host_git_user_name" != "Secuarden" ]]; then
+  check_forbidden git-user-name "$host_git_user_name"
+fi
+check_forbidden git-user-email "$host_git_user_email"
+check_forbidden git-remote "$host_git_remote"
+check_forbidden repository-path "$repo_root"
 
 if grep -Eiq '(AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|password[[:space:]]*=|authorization:[[:space:]]*bearer)' "$transcript" "$script_dir"/fixtures/*.json; then
   echo "privacy audit failed: credential-like text detected" >&2
