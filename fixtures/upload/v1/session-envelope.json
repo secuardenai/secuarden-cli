@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.secuarden.ai/upload/1.0/session-envelope.schema.json",
+  "schema_version": "1.0.0",
+  "session_id": "fixture-session-001",
+  "git_repo_url": "https://github.com/secuarden/example.git",
+  "branch_name": "feature/envelope",
+  "developer_name": "Fixture Developer",
+  "developer_email": "developer@example.invalid",
+  "os_user": "fixture-user",
+  "machine_id": "fixture-machine",
+  "agent_name": "claude-code",
+  "working_directory": "/workspace/example",
+  "started_at": "2026-08-01T00:00:00Z",
+  "ended_at": "2026-08-01T00:00:02Z",
+  "event_count": 2,
+  "files_edited": ["README.md"],
+  "privacy_mode": "redacted_content",
+  "completeness": {"state": "complete", "reasons": []},
+  "capture_failure_count": 0,
+  "session_hash": "s1:fixture-session-integrity-hash",
+  "events": [
+    {
+      "$schema": "https://schema.secuarden.ai/stage1/2.0/event.schema.json", "schema_version": "2.0.0",
+      "id": "11111111-1111-4111-8111-111111111111", "session_id": "fixture-session-001", "sequence": 1,
+      "timestamp": "2026-08-01T00:00:01Z", "captured_at": "2026-08-01T00:00:01Z", "source": "secuarden-cli", "source_version": "4.0.0",
+      "agent_name": "claude-code", "hook_phase": "pre", "action_type": "command_exec", "tool_name": "Bash", "outcome": "pending",
+      "permission_status": "unknown", "execution_status": "not_started", "privacy_mode": "redacted_content", "is_sensitive": false,
+      "redacted_fields": ["command"], "command": "curl -H 'Authorization: [REDACTED:bearer_token]' https://example.invalid", "raw_event_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "event_hash": "v3:fixture-event-hash-1", "completeness": {"state": "complete", "reasons": []}
+    },
+    {
+      "$schema": "https://schema.secuarden.ai/stage1/2.0/event.schema.json", "schema_version": "2.0.0",
+      "id": "22222222-2222-4222-8222-222222222222", "session_id": "fixture-session-001", "sequence": 2,
+      "timestamp": "2026-08-01T00:00:02Z", "captured_at": "2026-08-01T00:00:02Z", "source": "secuarden-cli", "source_version": "4.0.0",
+      "agent_name": "claude-code", "hook_phase": "post", "action_type": "file_write", "tool_name": "Edit", "outcome": "success",
+      "permission_status": "unknown", "execution_status": "completed", "privacy_mode": "redacted_content", "is_sensitive": false,
+      "redacted_fields": [], "file_path": "README.md", "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "raw_event_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "previous_event_hash": "v3:fixture-event-hash-1",
+      "event_hash": "v3:fixture-event-hash-2", "completeness": {"state": "complete", "reasons": []}
+    }
+  ],
+  "idempotency_key": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+}

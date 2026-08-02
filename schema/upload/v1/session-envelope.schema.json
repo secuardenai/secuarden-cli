@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schema.secuarden.ai/upload/1.0/session-envelope.schema.json",
+  "title": "Secuarden SaaS Session Upload Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schema_version", "session_id", "agent_name", "event_count", "privacy_mode", "completeness", "capture_failure_count", "events", "idempotency_key"],
+  "properties": {
+    "$schema": {"const": "https://schema.secuarden.ai/upload/1.0/session-envelope.schema.json"},
+    "schema_version": {"const": "1.0.0"},
+    "session_id": {"type": "string", "minLength": 1},
+    "git_repo_url": {"type": "string"}, "branch_name": {"type": "string"},
+    "developer_name": {"type": "string"}, "developer_email": {"type": "string"}, "os_user": {"type": "string"}, "machine_id": {"type": "string"},
+    "agent_name": {"type": "string", "minLength": 1}, "agent_version": {"type": "string"}, "model": {"type": "string"},
+    "working_directory": {"type": "string"}, "started_at": {"type": "string", "format": "date-time"}, "ended_at": {"type": "string", "format": "date-time"},
+    "event_count": {"type": "integer", "minimum": 0},
+    "files_edited": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "privacy_mode": {"enum": ["metadata_only", "redacted_content", "approved_content"]},
+    "completeness": {"$ref": "#/$defs/completeness"},
+    "capture_failure_count": {"type": "integer", "minimum": 0},
+    "session_hash": {"type": "string"},
+    "events": {"type": "array", "items": {"anyOf": [{"$ref": "../../stage1/v2/event.schema.json"}, {"$ref": "../../secuarden-event.schema.json"}]}},
+    "idempotency_key": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  },
+  "$defs": {
+    "completeness": {
+      "type": "object", "additionalProperties": false, "required": ["state", "reasons"],
+      "properties": {"state": {"enum": ["complete", "partial", "summary_only", "legacy_unverified"]}, "reasons": {"type": "array", "items": {"type": "string"}}}
+    }
+  }
+}

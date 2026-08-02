@@ -59,9 +59,11 @@ type Event struct {
 	OSUser         string `json:"os_user,omitempty"`
 	MachineID      string `json:"machine_id,omitempty"`
 
-	IntentSummary string `json:"intent_summary,omitempty"`
-	RawEventHash  string `json:"raw_event_hash,omitempty"`
-	Model         string `json:"model,omitempty"`
+	IntentSummary     string `json:"intent_summary,omitempty"`
+	RawEventHash      string `json:"raw_event_hash,omitempty"`
+	PreviousEventHash string `json:"previous_event_hash,omitempty"`
+	EventHash         string `json:"event_hash,omitempty"`
+	Model             string `json:"model,omitempty"`
 }
 
 type Completeness struct {

@@ -5,7 +5,7 @@ Git records what code changed. Secuarden records what Claude Code actually did a
 - **Authoritative hook-time capture** — records Claude Code actions as they occur, preserving operational detail that Git history does not contain.
 - **Local-first by default** — without an API key, redacted events remain in `~/.secuarden/secuarden.db`; no SaaS sync is enabled.
 - **Investigation-ready evidence** — inspect capture health, raw events, individual sessions, and local accountability reports from the CLI.
-- **Optional SaaS feedback** — API-key-enabled sync sends redacted summaries for branch-level risk feedback.
+- **Optional SaaS feedback** — API-key-enabled sync sends versioned, already-redacted session envelopes for branch-level risk feedback.
 - **Shared accountability** — gives developers, security teams, and platform engineers a common evidence record.
 - **Tamper-evident provenance** — every newly captured event is linked into a per-session SHA-256 chain that can be verified offline.
 - **CI-ready governance** — export an AI Bill of Materials and fail builds on transparent, deterministic risk thresholds.
@@ -480,7 +480,7 @@ This matters because risk accumulates over days. Evaluating only the last sessio
 ## Data & Privacy
 
 - **Local by default.** Without `--api-key`, nothing leaves your machine. No network calls, no telemetry, no analytics.
-- **Opt-in sync.** When `--api-key` is set, only the session summary (files edited, branch name, event count) is sent to Secuarden. Raw code diffs and command output are never uploaded.
+- **Opt-in sync.** When `--api-key` is set, a versioned session envelope containing session metadata and all already-redacted local events is sent to Secuarden over authenticated HTTPS. Raw code diffs and unredacted command output are never uploaded. See [the upload contract](docs/contracts/session-upload-envelope.md).
 - **Sensitive files** (`.env`, `*.pem`, `.ssh/*`, credentials) — file paths are recorded but content is never stored or uploaded.
 - **Content redaction** — API keys, tokens, JWTs, bearer tokens, and credentials are scrubbed from shell commands and output before storage. Redacted content is replaced with `[REDACTED:<pattern_name>]`.
 - **Your coding session is not slowed down.** All hooks except SessionEnd run asynchronously. SessionEnd is synchronous only to deliver feedback; it exits in under a second with or without sync enabled.
