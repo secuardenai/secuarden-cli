@@ -5,7 +5,7 @@ build:
 	CGO_ENABLED=0 go build $(LDFLAGS) -o bin/secuarden ./cmd/secuarden
 
 test:
-	go test ./internal/... -v
+	go test ./... -v
 
 lint:
 	golangci-lint run

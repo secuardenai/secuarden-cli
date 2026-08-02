@@ -19,7 +19,7 @@
     "completeness": {"$ref": "#/$defs/completeness"},
     "capture_failure_count": {"type": "integer", "minimum": 0},
     "session_hash": {"type": "string"},
-    "events": {"type": "array", "items": {"anyOf": [{"$ref": "../../stage1/v2/event.schema.json"}, {"$ref": "../../secuarden-event.schema.json"}]}},
+    "events": {"type": "array", "items": {"anyOf": [{"$ref": "https://schema.secuarden.ai/stage1/2.0/event.schema.json"}, {"$ref": "https://schema.secuarden.ai/v1/event.schema.json"}]}},
     "idempotency_key": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
   },
   "$defs": {
