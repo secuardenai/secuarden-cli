@@ -818,19 +818,39 @@ func (d *DB) GetStats(dbPath string) (*Stats, error) {
 	return s, nil
 }
 
-// SessionSummary is the payload sent to the SaaS on session-end sync.
-type SessionSummary struct {
-	SessionID        string   `json:"session_id"`
-	GitRepoURL       string   `json:"git_repo_url,omitempty"`
-	BranchName       string   `json:"branch_name,omitempty"`
-	DeveloperEmail   string   `json:"developer_email,omitempty"`
-	Model            string   `json:"model,omitempty"`
-	WorkingDirectory string   `json:"working_directory,omitempty"`
-	StartedAt        string   `json:"started_at,omitempty"`
-	EndedAt          string   `json:"ended_at,omitempty"`
-	EventCount       int      `json:"event_count"`
-	FilesEdited      []string `json:"files_edited,omitempty"`
+const SessionEnvelopeSchemaURL = "https://schema.secuarden.ai/upload/1.0/session-envelope.schema.json"
+const SessionEnvelopeVersion = "1.0.0"
+
+// SessionEnvelope is the complete, already-redacted SQLite representation sent
+// to SaaS. The legacy summary fields remain at top level for older consumers.
+type SessionEnvelope struct {
+	Schema              string              `json:"$schema"`
+	SchemaVersion       string              `json:"schema_version"`
+	SessionID           string              `json:"session_id"`
+	GitRepoURL          string              `json:"git_repo_url,omitempty"`
+	BranchName          string              `json:"branch_name,omitempty"`
+	DeveloperName       string              `json:"developer_name,omitempty"`
+	DeveloperEmail      string              `json:"developer_email,omitempty"`
+	OSUser              string              `json:"os_user,omitempty"`
+	MachineID           string              `json:"machine_id,omitempty"`
+	AgentName           string              `json:"agent_name"`
+	AgentVersion        string              `json:"agent_version,omitempty"`
+	Model               string              `json:"model,omitempty"`
+	WorkingDirectory    string              `json:"working_directory,omitempty"`
+	StartedAt           string              `json:"started_at,omitempty"`
+	EndedAt             string              `json:"ended_at,omitempty"`
+	EventCount          int                 `json:"event_count"`
+	FilesEdited         []string            `json:"files_edited,omitempty"`
+	PrivacyMode         string              `json:"privacy_mode"`
+	Completeness        events.Completeness `json:"completeness"`
+	CaptureFailureCount int                 `json:"capture_failure_count"`
+	SessionHash         string              `json:"session_hash,omitempty"`
+	Events              []events.Event      `json:"events"`
+	IdempotencyKey      string              `json:"idempotency_key"`
 }
+
+// SessionSummary is retained as a source-compatible name for integrations.
+type SessionSummary = SessionEnvelope
 
 // PendingSyncSession describes a session whose current event count exceeds its
 // last successfully uploaded event count.
@@ -909,30 +929,37 @@ func (d *DB) RecordSyncFailure(sessionID string, syncErr error) error {
 	return err
 }
 
-// ReadSessionSummary reads the session row and collects unique edited file paths
-// from the events table. Used to build the payload for SaaS sync.
-func (d *DB) ReadSessionSummary(sessionID string) (*SessionSummary, error) {
-	s := &SessionSummary{SessionID: sessionID}
+// ReadSessionEnvelope builds the complete upload contract solely from values
+// already persisted after local privacy handling.
+func (d *DB) ReadSessionEnvelope(sessionID string) (*SessionEnvelope, error) {
+	s := &SessionEnvelope{Schema: SessionEnvelopeSchemaURL, SchemaVersion: SessionEnvelopeVersion,
+		SessionID: sessionID, Events: []events.Event{}, Completeness: events.Completeness{Reasons: []string{}}}
+	var reasonsJSON string
 
 	row := d.db.QueryRow(`
 		SELECT
 			COALESCE(git_repo_url, ''),
 			COALESCE(git_branch, ''),
-			COALESCE(developer_email, ''),
+			COALESCE(developer_name, ''), COALESCE(developer_email, ''), COALESCE(os_user, ''), COALESCE(machine_id, ''),
+			COALESCE(agent_name, 'unknown'), COALESCE(agent_version, ''),
 			COALESCE(model, ''),
 			COALESCE(working_directory, ''),
 			COALESCE(started_at, ''),
 			COALESCE(ended_at, ''),
-			COALESCE(event_count, 0)
+			COALESCE(event_count, 0), COALESCE(privacy_mode, 'redacted_content'),
+			COALESCE(completeness_state, 'complete'), COALESCE(completeness_reasons, '[]'),
+			COALESCE(capture_failure_count, 0), COALESCE(session_hash, '')
 		FROM sessions WHERE id = ?`, sessionID)
 
 	if err := row.Scan(
-		&s.GitRepoURL, &s.BranchName, &s.DeveloperEmail,
-		&s.Model, &s.WorkingDirectory,
-		&s.StartedAt, &s.EndedAt, &s.EventCount,
+		&s.GitRepoURL, &s.BranchName, &s.DeveloperName, &s.DeveloperEmail, &s.OSUser, &s.MachineID,
+		&s.AgentName, &s.AgentVersion, &s.Model, &s.WorkingDirectory,
+		&s.StartedAt, &s.EndedAt, &s.EventCount, &s.PrivacyMode,
+		&s.Completeness.State, &reasonsJSON, &s.CaptureFailureCount, &s.SessionHash,
 	); err != nil {
 		return nil, fmt.Errorf("read session: %w", err)
 	}
+	_ = json.Unmarshal([]byte(reasonsJSON), &s.Completeness.Reasons)
 
 	rows, err := d.db.Query(`
 		SELECT DISTINCT file_path FROM events
@@ -942,7 +969,7 @@ func (d *DB) ReadSessionSummary(sessionID string) (*SessionSummary, error) {
 		  AND is_sensitive = 0
 		ORDER BY file_path`, sessionID)
 	if err != nil {
-		return s, nil // non-fatal: return summary without files
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -952,7 +979,70 @@ func (d *DB) ReadSessionSummary(sessionID string) (*SessionSummary, error) {
 			s.FilesEdited = append(s.FilesEdited, fp)
 		}
 	}
+	rows.Close()
+
+	eventRows, err := d.db.Query(`SELECT id, sequence, timestamp, COALESCE(schema_version,''), COALESCE(captured_at,''), COALESCE(invocation_id,''),
+		COALESCE(source,''), COALESCE(source_version,''), COALESCE(agent_name,''), COALESCE(agent_version,''), COALESCE(model,''), COALESCE(provider,''),
+		hook_phase, action_type, COALESCE(tool_name,''), COALESCE(result_status,''), COALESCE(outcome,''), COALESCE(permission_status,''), COALESCE(execution_status,''),
+		COALESCE(privacy_mode,''), COALESCE(completeness_state,''), COALESCE(completeness_reasons,'[]'), is_sensitive, COALESCE(redacted_fields,'[]'),
+		COALESCE(file_path,''), COALESCE(content_hash,''), COALESCE(diff_stats,''), COALESCE(command,''), exit_code, COALESCE(command_output_preview,''),
+		COALESCE(mcp_server,''), COALESCE(mcp_tool,''), duration_ms, COALESCE(working_directory,''), COALESCE(git_branch,''), COALESCE(developer_email,''),
+		COALESCE(intent_summary,''), COALESCE(raw_event_hash,''), COALESCE(previous_event_hash,''), COALESCE(event_hash,'')
+		FROM events WHERE session_id=? ORDER BY sequence`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("read session events: %w", err)
+	}
+	defer eventRows.Close()
+	for eventRows.Next() {
+		var e events.Event
+		var sensitive int
+		var redacted, reasons string
+		if err := eventRows.Scan(&e.ID, &e.Sequence, &e.Timestamp, &e.SchemaVersion, &e.CapturedAt, &e.InvocationID,
+			&e.Source, &e.SourceVersion, &e.AgentName, &e.AgentVersion, &e.Model, &e.Provider, &e.HookPhase, &e.ActionType, &e.ToolName,
+			&e.ResultStatus, &e.Outcome, &e.PermissionStatus, &e.ExecutionStatus, &e.PrivacyMode, &e.Completeness.State, &reasons, &sensitive, &redacted,
+			&e.FilePath, &e.ContentHash, &e.DiffStats, &e.Command, &e.ExitCode, &e.CommandOutputPreview, &e.MCPServer, &e.MCPTool, &e.DurationMS,
+			&e.WorkingDirectory, &e.GitBranch, &e.DeveloperEmail, &e.IntentSummary, &e.RawEventHash, &e.PreviousEventHash, &e.EventHash); err != nil {
+			return nil, err
+		}
+		if e.SchemaVersion == "" {
+			e.Schema = "https://schema.secuarden.ai/v1/event.schema.json"
+			e.SchemaVersion = "1.0.0"
+		} else {
+			e.Schema = events.SchemaURL
+		}
+		e.SessionID = sessionID
+		e.IsSensitive = sensitive != 0
+		_ = json.Unmarshal([]byte(redacted), &e.RedactedFields)
+		_ = json.Unmarshal([]byte(reasons), &e.Completeness.Reasons)
+		if e.RedactedFields == nil {
+			e.RedactedFields = []string{}
+		}
+		if e.Completeness.Reasons == nil {
+			e.Completeness.Reasons = []string{}
+		}
+		s.Events = append(s.Events, e)
+	}
+	if err := eventRows.Err(); err != nil {
+		return nil, err
+	}
+	canonical := struct {
+		SchemaVersion, SessionID, SessionHash string
+		EventCount                            int
+		Events                                []events.Event
+	}{s.SchemaVersion, s.SessionID, s.SessionHash, len(s.Events), s.Events}
+	b, err := json.Marshal(canonical)
+	if err != nil {
+		return nil, err
+	}
+	digest := sha256.Sum256(b)
+	s.IdempotencyKey = fmt.Sprintf("%x", digest[:])
+	s.EventCount = len(s.Events)
 	return s, nil
+}
+
+// ReadSessionSummary now returns the complete envelope while preserving the old API name.
+func (d *DB) ReadSessionSummary(sessionID string) (*SessionSummary, error) {
+	return d.ReadSessionEnvelope(sessionID)
 }
 
 func nullStr(s string) interface{} {

@@ -48,6 +48,8 @@
     "machine_id": {"type": "string"},
     "intent_summary": {"type": "string"},
     "raw_event_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "previous_event_hash": {"type": "string"},
+    "event_hash": {"type": "string"},
     "completeness": {
       "type": "object", "additionalProperties": false,
       "required": ["state", "reasons"],

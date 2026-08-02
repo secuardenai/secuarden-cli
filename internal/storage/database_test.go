@@ -2,6 +2,7 @@ package storage
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -10,6 +11,62 @@ import (
 
 	"github.com/secuardenai/secuarden-cli/internal/events"
 )
+
+func TestReadSessionEnvelopeContainsOrderedRedactedEvidence(t *testing.T) {
+	db, _ := tempDB(t)
+	if err := db.EnsureSession("envelope", "claude-code", "/work"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpdateSessionIdentity("envelope", SessionIdentity{DeveloperName: "Dev", DeveloperEmail: "dev@example.invalid", GitBranch: "main"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range []*events.Event{
+		{ID: "one", SessionID: "envelope", Timestamp: "2026-08-01T00:00:01Z", Source: "secuarden-cli", AgentName: "claude-code", HookPhase: "pre", ActionType: "command_exec", Command: "echo [REDACTED:token]", PrivacyMode: "redacted_content", RedactedFields: []string{"command"}},
+		{ID: "two", SessionID: "envelope", Timestamp: "2026-08-01T00:00:02Z", Source: "secuarden-cli", AgentName: "claude-code", HookPhase: "post", ActionType: "mcp_tool_use", MCPServer: "docs", MCPTool: "lookup", Outcome: "success", PrivacyMode: "redacted_content", RedactedFields: []string{}},
+	} {
+		if err := db.WriteEvent(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	first, err := db.ReadSessionEnvelope("envelope")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := db.ReadSessionEnvelope("envelope")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.SchemaVersion != SessionEnvelopeVersion || first.DeveloperName != "Dev" || len(first.Events) != 2 {
+		t.Fatalf("incomplete envelope: %#v", first)
+	}
+	if first.Events[0].Sequence != 1 || first.Events[1].Sequence != 2 || first.Events[1].MCPTool != "lookup" {
+		t.Fatalf("events not ordered/complete: %#v", first.Events)
+	}
+	if first.Events[0].Command != "echo [REDACTED:token]" || len(first.Events[0].RedactedFields) != 1 {
+		t.Fatal("stored redaction metadata was not preserved")
+	}
+	if first.Events[1].PreviousEventHash == "" || first.Events[1].EventHash == "" {
+		t.Fatal("integrity chain missing")
+	}
+	if first.IdempotencyKey == "" || first.IdempotencyKey != second.IdempotencyKey {
+		t.Fatal("idempotency key is not stable")
+	}
+}
+
+func TestGeneratedSessionEnvelopeFixture(t *testing.T) {
+	raw, err := os.ReadFile("../../fixtures/upload/v1/session-envelope.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope SessionEnvelope
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Schema != SessionEnvelopeSchemaURL || envelope.SchemaVersion != SessionEnvelopeVersion || len(envelope.Events) == 0 {
+		t.Fatalf("invalid generated fixture: %#v", envelope)
+	}
+}
 
 func tempDB(t *testing.T) (*DB, string) {
 	t.Helper()

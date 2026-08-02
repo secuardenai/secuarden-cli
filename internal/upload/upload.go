@@ -1,4 +1,4 @@
-// Package upload sends a completed session summary to the Secuarden SaaS
+// Package upload sends a completed session envelope to the Secuarden SaaS
 // and returns developer feedback from the changeset evaluator.
 // Only called when sync_enabled = true in ~/.secuarden/config.json.
 package upload
@@ -33,8 +33,8 @@ type Feedback struct {
 // (terminal, IDE extension, background task).
 type StoredFeedback struct {
 	Feedback
-	SessionID   string `json:"session_id"`
-	CapturedAt  string `json:"captured_at"`
+	SessionID  string `json:"session_id"`
+	CapturedAt string `json:"captured_at"`
 }
 
 // LastFeedbackPath returns ~/.secuarden/last-feedback.json.
@@ -99,13 +99,10 @@ func SyncSession(cfg *config.Config, summary *storage.SessionSummary) (*Feedback
 		return nil, fmt.Errorf("marshal payload: %w", err)
 	}
 
-	url := cfg.APIURL + "/api/agent-ledger/session-sync"
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	req, err := newSyncRequest(cfg, summary.IdempotencyKey, body)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
 
 	client := &http.Client{Timeout: 8 * time.Second}
 	resp, err := client.Do(req)
@@ -126,4 +123,15 @@ func SyncSession(cfg *config.Config, summary *storage.SessionSummary) (*Feedback
 		return nil, fmt.Errorf("parse response: %w", err)
 	}
 	return result.Changeset, nil
+}
+
+func newSyncRequest(cfg *config.Config, idempotencyKey string, body []byte) (*http.Request, error) {
+	req, err := http.NewRequest(http.MethodPost, cfg.APIURL+"/api/agent-ledger/session-sync", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
+	req.Header.Set("Idempotency-Key", idempotencyKey)
+	return req, nil
 }
