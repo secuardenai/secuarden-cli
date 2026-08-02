@@ -22,7 +22,7 @@
     {
       "$schema": "https://schema.secuarden.ai/stage1/2.0/event.schema.json", "schema_version": "2.0.0",
       "id": "11111111-1111-4111-8111-111111111111", "session_id": "fixture-session-001", "sequence": 1,
-      "timestamp": "2026-08-01T00:00:01Z", "captured_at": "2026-08-01T00:00:01Z", "source": "secuarden-cli", "source_version": "4.0.0",
+      "timestamp": "2026-08-01T00:00:01Z", "captured_at": "2026-08-01T00:00:01Z", "invocation_id": "toolu_fixture_001", "source": "secuarden-cli", "source_version": "4.0.0",
       "agent_name": "claude-code", "hook_phase": "pre", "action_type": "command_exec", "tool_name": "Bash", "outcome": "pending",
       "permission_status": "unknown", "execution_status": "not_started", "privacy_mode": "redacted_content", "is_sensitive": false,
       "redacted_fields": ["command"], "command": "curl -H 'Authorization: [REDACTED:bearer_token]' https://example.invalid", "raw_event_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -31,7 +31,7 @@
     {
       "$schema": "https://schema.secuarden.ai/stage1/2.0/event.schema.json", "schema_version": "2.0.0",
       "id": "22222222-2222-4222-8222-222222222222", "session_id": "fixture-session-001", "sequence": 2,
-      "timestamp": "2026-08-01T00:00:02Z", "captured_at": "2026-08-01T00:00:02Z", "source": "secuarden-cli", "source_version": "4.0.0",
+      "timestamp": "2026-08-01T00:00:02Z", "captured_at": "2026-08-01T00:00:02Z", "invocation_id": "toolu_fixture_001", "source": "secuarden-cli", "source_version": "4.0.0",
       "agent_name": "claude-code", "hook_phase": "post", "action_type": "file_write", "tool_name": "Edit", "outcome": "success",
       "permission_status": "unknown", "execution_status": "completed", "privacy_mode": "redacted_content", "is_sensitive": false,
       "redacted_fields": [], "file_path": "README.md", "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
