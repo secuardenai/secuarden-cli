@@ -49,10 +49,22 @@ var userPromptSubmitCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) { capture.HandleHookEvent("user-prompt-submit", Version) },
 }
 
+func codexHookCommand(use, phase string) *cobra.Command {
+	return &cobra.Command{Use: use, Hidden: true, Run: func(cmd *cobra.Command, args []string) {
+		capture.HandleCodexHookEvent(phase, Version)
+	}}
+}
+
 func init() {
 	hookCmd.AddCommand(preToolUseCmd)
 	hookCmd.AddCommand(postToolUseCmd)
 	hookCmd.AddCommand(sessionStartCmd)
 	hookCmd.AddCommand(sessionEndCmd)
 	hookCmd.AddCommand(userPromptSubmitCmd)
+	hookCmd.AddCommand(codexHookCommand("codex-pre-tool-use", "pre-tool-use"))
+	hookCmd.AddCommand(codexHookCommand("codex-permission-request", "permission-request"))
+	hookCmd.AddCommand(codexHookCommand("codex-post-tool-use", "post-tool-use"))
+	hookCmd.AddCommand(codexHookCommand("codex-session-start", "session-start"))
+	hookCmd.AddCommand(codexHookCommand("codex-session-end", "session-end"))
+	hookCmd.AddCommand(codexHookCommand("codex-user-prompt-submit", "user-prompt-submit"))
 }

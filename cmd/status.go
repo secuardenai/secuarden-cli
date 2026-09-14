@@ -69,8 +69,21 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		developer = dev.Email
 	}
 
+	activeClaude := agent.HooksInstalled()
+	activeCodex := agent.CodexHooksInstalled()
+	statusAgent := summary.Agent
+	if statusAgent == "" {
+		switch {
+		case activeCodex && !activeClaude:
+			statusAgent = "codex"
+		case activeClaude && !activeCodex:
+			statusAgent = "claude-code"
+		case activeClaude && activeCodex:
+			statusAgent = "Claude Code + Codex"
+		}
+	}
 	return renderStatus(cmd.OutOrStdout(), statusView{
-		CaptureActive: agent.HooksInstalled(), Agent: summary.Agent,
+		CaptureActive: activeClaude || activeCodex, Agent: statusAgent,
 		DatabasePath: dbPath, DatabaseSize: fileSize(dbPath), Sync: syncMode,
 		Developer: developer, PrivacyMode: cfg.PrivacyMode, Summary: summary,
 	})
@@ -180,6 +193,8 @@ func displayAgent(name string) string {
 	switch strings.ToLower(name) {
 	case "claude-code", "claude code":
 		return "Claude Code"
+	case "codex":
+		return "Codex"
 	case "":
 		return "Unknown"
 	default:

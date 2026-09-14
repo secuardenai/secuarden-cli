@@ -175,3 +175,47 @@ func TestInstallHooks_MissingFile(t *testing.T) {
 		t.Error("settings.json should have been created")
 	}
 }
+
+func TestInstallCodexHooks_IdempotentAndPreservesExisting(t *testing.T) {
+	dir := t.TempDir()
+	codexDir := filepath.Join(dir, ".codex")
+	if err := os.MkdirAll(codexDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	existing := `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"other-tool"}]}]}}`
+	if err := os.WriteFile(filepath.Join(codexDir, "hooks.json"), []byte(existing), 0644); err != nil {
+		t.Fatal(err)
+	}
+	patchHome(t, dir)
+
+	if err := InstallCodexHooks(); err != nil {
+		t.Fatalf("InstallCodexHooks: %v", err)
+	}
+	if err := InstallCodexHooks(); err != nil {
+		t.Fatalf("second InstallCodexHooks: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(codexDir, "hooks.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings map[string]interface{}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatal(err)
+	}
+	hooks := settings["hooks"].(map[string]interface{})
+	pre := hooks["PreToolUse"].([]interface{})
+	if len(pre) != 2 {
+		t.Fatalf("PreToolUse entries = %d, want existing + one Secuarden entry", len(pre))
+	}
+	if !CodexHooksInstalled() {
+		t.Fatal("Codex hooks should be detected")
+	}
+
+	if err := RemoveCodexHooks(); err != nil {
+		t.Fatalf("RemoveCodexHooks: %v", err)
+	}
+	if CodexHooksInstalled() {
+		t.Fatal("Codex hooks should be removed")
+	}
+}

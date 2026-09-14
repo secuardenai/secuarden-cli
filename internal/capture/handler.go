@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/secuardenai/secuarden-cli/internal/adapter"
+	codexadapter "github.com/secuardenai/secuarden-cli/internal/adapters/codex"
 	"github.com/secuardenai/secuarden-cli/internal/config"
 	"github.com/secuardenai/secuarden-cli/internal/events"
 	"github.com/secuardenai/secuarden-cli/internal/identity"
@@ -34,6 +36,45 @@ func HandleHookEvent(phase string, version string) {
 }
 
 func handle(phase, version string) error {
+	return handleWithParser(phase, version, "claude-code", "anthropic", func(data []byte) (*events.RawHookInput, error) {
+		return events.ParseHookInput(data)
+	})
+}
+
+// HandleCodexHookEvent processes a Codex lifecycle hook using the shared
+// persistence pipeline but a separate agent-specific wire parser.
+func HandleCodexHookEvent(phase string, version string) {
+	if err := handleWithParser(phase, version, "codex", "openai", parseCodexInput); err != nil {
+		logError(err)
+	}
+}
+
+func parseCodexInput(data []byte) (*events.RawHookInput, error) {
+	codex, err := events.ParseCodexHookInput(data)
+	if err != nil {
+		return nil, err
+	}
+	hookName := codex.HookEventName
+	if hookName == "" {
+		return nil, fmt.Errorf("Codex hook input: missing hook_event_name")
+	}
+	codexInput := adapter.RawEvent{Hook: hookName, Payload: data}
+	if _, err := (codexadapter.Adapter{}).Normalize(codexInput); err != nil {
+		return nil, err
+	}
+	toolInput, _ := events.JSONObject(codex.ToolInput)
+	toolResponse, _ := events.JSONObject(codex.ToolResponse)
+	return &events.RawHookInput{
+		SessionID: codex.SessionID, CWD: codex.CWD, ToolName: codex.ToolName,
+		ToolUseID: codex.ToolUseID, Model: codex.Model, Prompt: codex.Prompt,
+		PermissionMode: codex.PermissionMode, HookEventName: codex.HookEventName,
+		Reason: codex.Reason, PermissionStatus: codex.PermissionStatus,
+		Timestamp: "", ToolInput: toolInput, ToolInputRaw: codex.ToolInput,
+		ToolResponse: toolResponse, ToolResponseRaw: codex.ToolResponse,
+	}, nil
+}
+
+func handleWithParser(phase, version, agentName, provider string, parse func([]byte) (*events.RawHookInput, error)) error {
 	// 1. Read stdin with a hard cap — tool responses are never legitimately huge.
 	data, err := io.ReadAll(io.LimitReader(os.Stdin, maxStdinBytes))
 	if err != nil {
@@ -47,7 +88,7 @@ func handle(phase, version string) error {
 	rawHash := fmt.Sprintf("%x", sha256.Sum256(data))
 
 	// 3. Parse JSON
-	raw, err := events.ParseHookInput(data)
+	raw, err := parse(data)
 	if err != nil {
 		return fmt.Errorf("parse input: %w", err)
 	}
@@ -64,7 +105,7 @@ func handle(phase, version string) error {
 	// 5. Map tool_name → action_type
 	hookPhase := normalizePhase(phase)
 	toolName := raw.ToolName
-	actionType := mapPhaseToAction(hookPhase, toolName)
+	actionType := mapPhaseToActionForAgent(agentName, hookPhase, toolName)
 
 	// 6. Extract fields
 	filePath := events.ExtractFilePath(raw.ToolInput)
@@ -155,7 +196,6 @@ func handle(phase, version string) error {
 	defer db.Close()
 
 	// 11. Get or create session
-	agentName := "claude-code"
 	if err := db.EnsureSession(sessionID, agentName, cwd); err != nil {
 		// On session-end: session already exists from session-start; EnsureSession
 		// failing here (e.g. SQLITE_BUSY) must not block sync feedback.
@@ -188,6 +228,13 @@ func handle(phase, version string) error {
 		eventTime = now
 	}
 	outcome, permissionStatus, executionStatus := outcomeForPhase(hookPhase, resultStatus)
+	if raw.PermissionStatus != "" {
+		permissionStatus = raw.PermissionStatus
+	}
+	if permissionStatus == "denied" {
+		outcome = events.ResultRejected
+		executionStatus = "not_started"
+	}
 	completeness := events.Completeness{State: "complete", Reasons: []string{}}
 	if (hookPhase == events.HookPhasePre || hookPhase == events.HookPhasePost) && raw.ToolUseID == "" {
 		completeness = events.Completeness{State: "partial", Reasons: []string{"missing_invocation_id"}}
@@ -206,7 +253,7 @@ func handle(phase, version string) error {
 		AgentName:            agentName,
 		AgentVersion:         raw.AgentVersion,
 		Model:                raw.Model,
-		Provider:             "anthropic",
+		Provider:             provider,
 		HookPhase:            hookPhase,
 		ActionType:           actionType,
 		ToolName:             toolName,
@@ -259,6 +306,8 @@ func normalizePhase(phase string) string {
 	switch phase {
 	case "pre-tool-use":
 		return events.HookPhasePre
+	case "permission-request":
+		return events.HookPhasePre
 	case "post-tool-use":
 		return events.HookPhasePost
 	case "session-start":
@@ -273,6 +322,10 @@ func normalizePhase(phase string) string {
 }
 
 func mapPhaseToAction(phase, toolName string) string {
+	return mapPhaseToActionForAgent("claude-code", phase, toolName)
+}
+
+func mapPhaseToActionForAgent(agentName, phase, toolName string) string {
 	switch phase {
 	case events.HookPhaseSessionStart:
 		return events.ActionSessionStart
@@ -281,6 +334,9 @@ func mapPhaseToAction(phase, toolName string) string {
 	case events.HookPhaseIntent:
 		return events.ActionDeveloperIntent
 	default:
+		if agentName == "codex" {
+			return events.MapCodexToolToAction(toolName)
+		}
 		return events.MapToolToAction(toolName)
 	}
 }

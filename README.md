@@ -497,6 +497,10 @@ secuarden uninstall --purge
 
 ## Contributing
 
+See the [policy module documentation](docs/policy.md) for the experimental
+certificate-flow test iteration. This standalone package is not yet connected
+to CLI commands and does not provide production identity verification.
+
 Contributions welcome. The most impactful areas:
 
 1. **New agent support** — adding hooks for Cursor, Copilot, Windsurf. See `internal/agent/claudecode.go` for the pattern.
