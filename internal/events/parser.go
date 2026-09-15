@@ -11,33 +11,41 @@ import (
 // of content blocks (e.g. from multi-part tool results). Both shapes are accepted.
 func ParseHookInput(data []byte) (*RawHookInput, error) {
 	var shadow struct {
-		SessionID    string                 `json:"session_id"`
-		Type         string                 `json:"type"`
-		CWD          string                 `json:"cwd"`
-		ToolUseID    string                 `json:"tool_use_id"`
-		Model        string                 `json:"model"`
-		AgentVersion string                 `json:"agent_version"`
-		Timestamp    string                 `json:"timestamp"`
-		Prompt       string                 `json:"prompt"`
-		ToolName     string                 `json:"tool_name"`
-		ToolInput    map[string]interface{} `json:"tool_input"`
-		ToolResponse json.RawMessage        `json:"tool_response"`
+		SessionID    string          `json:"session_id"`
+		Type         string          `json:"type"`
+		CWD          string          `json:"cwd"`
+		ToolUseID    string          `json:"tool_use_id"`
+		Model        string          `json:"model"`
+		AgentVersion string          `json:"agent_version"`
+		Timestamp    string          `json:"timestamp"`
+		Prompt       string          `json:"prompt"`
+		ToolName     string          `json:"tool_name"`
+		ToolInput    json.RawMessage `json:"tool_input"`
+		ToolResponse json.RawMessage `json:"tool_response"`
 	}
 	if err := json.Unmarshal(data, &shadow); err != nil {
 		return nil, fmt.Errorf("parse hook input: %w", err)
 	}
 
+	var toolInput map[string]interface{}
+	if len(shadow.ToolInput) > 0 {
+		if err := json.Unmarshal(shadow.ToolInput, &toolInput); err != nil {
+			return nil, fmt.Errorf("parse hook input: invalid tool_input: %w", err)
+		}
+	}
 	raw := &RawHookInput{
-		SessionID:    shadow.SessionID,
-		Type:         shadow.Type,
-		CWD:          shadow.CWD,
-		ToolName:     shadow.ToolName,
-		ToolInput:    shadow.ToolInput,
-		ToolUseID:    shadow.ToolUseID,
-		Model:        shadow.Model,
-		AgentVersion: shadow.AgentVersion,
-		Timestamp:    shadow.Timestamp,
-		Prompt:       shadow.Prompt,
+		SessionID:       shadow.SessionID,
+		Type:            shadow.Type,
+		CWD:             shadow.CWD,
+		ToolName:        shadow.ToolName,
+		ToolInput:       toolInput,
+		ToolUseID:       shadow.ToolUseID,
+		Model:           shadow.Model,
+		AgentVersion:    shadow.AgentVersion,
+		Timestamp:       shadow.Timestamp,
+		Prompt:          shadow.Prompt,
+		ToolInputRaw:    cloneRaw(shadow.ToolInput),
+		ToolResponseRaw: cloneRaw(shadow.ToolResponse),
 	}
 
 	if len(shadow.ToolResponse) > 0 {
@@ -54,6 +62,13 @@ func ParseHookInput(data []byte) (*RawHookInput, error) {
 	}
 
 	return raw, nil
+}
+
+func cloneRaw(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return nil
+	}
+	return append(json.RawMessage(nil), raw...)
 }
 
 // normalizeContentBlocks converts a content-block array into a simple map with

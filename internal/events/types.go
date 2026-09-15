@@ -1,5 +1,7 @@
 package events
 
+import "encoding/json"
+
 const SchemaURL = "https://schema.secuarden.ai/stage1/2.0/event.schema.json"
 const SchemaVersion = "2.0.0"
 
@@ -108,20 +110,30 @@ const (
 
 // RawHookInput is the raw JSON received from Claude Code hooks on stdin.
 type RawHookInput struct {
-	SessionID    string `json:"session_id"`
-	Type         string `json:"type"`
-	CWD          string `json:"cwd"`
-	ToolUseID    string `json:"tool_use_id"`
-	Model        string `json:"model"`
-	AgentVersion string `json:"agent_version"`
-	Timestamp    string `json:"timestamp"`
-	Prompt       string `json:"prompt"`
+	SessionID        string `json:"session_id"`
+	Type             string `json:"type"`
+	CWD              string `json:"cwd"`
+	ToolUseID        string `json:"tool_use_id"`
+	Model            string `json:"model"`
+	PermissionMode   string `json:"permission_mode"`
+	HookEventName    string `json:"hook_event_name"`
+	Reason           string `json:"reason"`
+	PermissionStatus string `json:"permission_status"`
+	AgentVersion     string `json:"agent_version"`
+	Timestamp        string `json:"timestamp"`
+	Prompt           string `json:"prompt"`
 
 	// PreToolUse / PostToolUse
 	ToolName  string                 `json:"tool_name"`
 	ToolInput map[string]interface{} `json:"tool_input"`
+	// ToolInputRaw preserves the agent-native JSON value. ToolInput is retained
+	// for the Claude-compatible object-shaped extraction helpers.
+	ToolInputRaw json.RawMessage `json:"-"`
 
 	// PostToolUse — populated by ParseHookInput after normalizing the raw value.
 	// Claude Code may send tool_response as an object OR an array of content blocks.
 	ToolResponse map[string]interface{} `json:"-"`
+	// ToolResponseRaw preserves arbitrary JSON values such as Codex arrays or
+	// scalar tool results.
+	ToolResponseRaw json.RawMessage `json:"-"`
 }

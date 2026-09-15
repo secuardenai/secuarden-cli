@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/spf13/cobra"
 	"github.com/secuardenai/secuarden-cli/internal/agent"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -34,6 +34,12 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("remove hooks: %w", err)
 	}
 	fmt.Println("✓ Secuarden hooks removed from Claude Code settings")
+	if agent.CodexHooksInstalled() {
+		if err := agent.RemoveCodexHooks(); err != nil {
+			return fmt.Errorf("remove Codex hooks: %w", err)
+		}
+		fmt.Println("✓ Secuarden hooks removed from Codex configuration")
+	}
 
 	if flagPurge {
 		home, err := os.UserHomeDir()

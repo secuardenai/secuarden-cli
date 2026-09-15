@@ -256,6 +256,9 @@ func isSecuardenEntry(v interface{}) bool {
 		if !ok {
 			continue
 		}
+		if command, _ := hm["command"].(string); command == "secuarden" || command == "secuarden hook" || (len(command) >= len("secuarden hook ") && command[:len("secuarden hook ")] == "secuarden hook ") {
+			return true
+		}
 		if cmd, _ := hm["command"].(string); cmd == "secuarden" {
 			if args, _ := hm["args"].([]interface{}); len(args) > 0 {
 				if first, _ := args[0].(string); first == "hook" {

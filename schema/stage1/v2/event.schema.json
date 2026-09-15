@@ -16,7 +16,7 @@
     "invocation_id": {"type": "string", "minLength": 1},
     "source": {"const": "secuarden-cli"},
     "source_version": {"type": "string", "minLength": 1},
-    "agent_name": {"enum": ["claude-code", "unknown"]},
+    "agent_name": {"enum": ["claude-code", "codex", "unknown"]},
     "agent_version": {"type": "string"},
     "model": {"type": "string"},
     "provider": {"type": "string"},

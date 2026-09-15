@@ -97,6 +97,13 @@ func TestParseHookInput_Invalid(t *testing.T) {
 	}
 }
 
+func TestParseHookInput_RejectsMalformedToolInput(t *testing.T) {
+	_, err := ParseHookInput([]byte(`{"tool_name":"Bash","tool_input":"not-an-object"}`))
+	if err == nil {
+		t.Fatal("expected malformed tool_input to be rejected")
+	}
+}
+
 func TestParseHookInput_Empty(t *testing.T) {
 	_, err := ParseHookInput([]byte("{}"))
 	if err != nil {
@@ -119,6 +126,37 @@ func TestExtractFilePath_MultipleKeys(t *testing.T) {
 		if got != tt.expect {
 			b, _ := json.Marshal(tt.input)
 			t.Errorf("ExtractFilePath(%s) = %q, want %q", b, got, tt.expect)
+		}
+	}
+}
+
+func TestParseCodexHookInput_PreservesArbitraryJSON(t *testing.T) {
+	data := []byte(`{"session_id":"s1","hook_event_name":"PostToolUse","tool_name":"mcp__fs__read","tool_use_id":"call-1","tool_input":["a","b"],"tool_response":"done"}`)
+	raw, err := ParseCodexHookInput(data)
+	if err != nil {
+		t.Fatalf("ParseCodexHookInput: %v", err)
+	}
+	if string(raw.ToolInput) != `["a","b"]` {
+		t.Fatalf("tool_input was not preserved: %s", raw.ToolInput)
+	}
+	if string(raw.ToolResponse) != `"done"` {
+		t.Fatalf("tool_response was not preserved: %s", raw.ToolResponse)
+	}
+	if _, ok := JSONObject(raw.ToolInput); ok {
+		t.Fatal("array tool_input should not be treated as an object")
+	}
+}
+
+func TestMapCodexToolToAction(t *testing.T) {
+	for _, test := range []struct {
+		name, want string
+	}{
+		{"Bash", ActionCommandExec},
+		{"apply_patch", ActionFileWrite},
+		{"mcp__fs__read", ActionMCPToolUse},
+	} {
+		if got := MapCodexToolToAction(test.name); got != test.want {
+			t.Errorf("MapCodexToolToAction(%q) = %q, want %q", test.name, got, test.want)
 		}
 	}
 }
