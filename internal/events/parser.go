@@ -26,6 +26,9 @@ func ParseHookInput(data []byte) (*RawHookInput, error) {
 	if err := json.Unmarshal(data, &shadow); err != nil {
 		return nil, fmt.Errorf("parse hook input: %w", err)
 	}
+	if err := validateAgentPath(shadow.CWD, "cwd"); err != nil {
+		return nil, fmt.Errorf("parse hook input: %w", err)
+	}
 
 	var toolInput map[string]interface{}
 	if len(shadow.ToolInput) > 0 {

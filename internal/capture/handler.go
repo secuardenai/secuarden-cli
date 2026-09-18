@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -62,8 +63,14 @@ func parseCodexInput(data []byte) (*events.RawHookInput, error) {
 	if _, err := (codexadapter.Adapter{}).Normalize(codexInput); err != nil {
 		return nil, err
 	}
-	toolInput, _ := events.JSONObject(codex.ToolInput)
-	toolResponse, _ := events.JSONObject(codex.ToolResponse)
+	toolInput, _, err := events.ParseJSONObject(codex.ToolInput)
+	if err != nil {
+		return nil, fmt.Errorf("parse Codex tool_input: %w", err)
+	}
+	toolResponse, _, err := events.ParseJSONObject(codex.ToolResponse)
+	if err != nil {
+		return nil, fmt.Errorf("parse Codex tool_response: %w", err)
+	}
 	return &events.RawHookInput{
 		SessionID: codex.SessionID, CWD: codex.CWD, ToolName: codex.ToolName,
 		ToolUseID: codex.ToolUseID, Model: codex.Model, Prompt: codex.Prompt,
@@ -75,6 +82,9 @@ func parseCodexInput(data []byte) (*events.RawHookInput, error) {
 }
 
 func handleWithParser(phase, version, agentName, provider string, parse func([]byte) (*events.RawHookInput, error)) error {
+	if provider != "anthropic" && provider != "openai" {
+		return fmt.Errorf("unsupported provider %q", provider)
+	}
 	// 1. Read stdin with a hard cap — tool responses are never legitimately huge.
 	data, err := io.ReadAll(io.LimitReader(os.Stdin, maxStdinBytes))
 	if err != nil {
@@ -229,7 +239,11 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 	}
 	outcome, permissionStatus, executionStatus := outcomeForPhase(hookPhase, resultStatus)
 	if raw.PermissionStatus != "" {
-		permissionStatus = raw.PermissionStatus
+		normalizedPermission, ok := normalizePermissionStatus(raw.PermissionStatus)
+		if !ok {
+			return fmt.Errorf("invalid permission_status %q", raw.PermissionStatus)
+		}
+		permissionStatus = normalizedPermission
 	}
 	if permissionStatus == "denied" {
 		outcome = events.ResultRejected
@@ -300,6 +314,19 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 	}
 
 	return nil
+}
+
+func normalizePermissionStatus(value string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "allowed", "approved":
+		return "allowed", true
+	case "denied", "rejected":
+		return "denied", true
+	case "pending":
+		return "pending", true
+	default:
+		return "", false
+	}
 }
 
 func normalizePhase(phase string) string {

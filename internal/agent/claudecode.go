@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -196,12 +197,21 @@ func HooksInstalled() bool {
 }
 
 func readSettings(path string) (map[string]interface{}, error) {
-	data, err := os.ReadFile(path)
+	const maxSettingsBytes = 1 * 1024 * 1024
+	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return make(map[string]interface{}), nil
 		}
 		return nil, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxSettingsBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxSettingsBytes {
+		return nil, fmt.Errorf("settings file exceeds %d bytes", maxSettingsBytes)
 	}
 	if len(data) == 0 {
 		return make(map[string]interface{}), nil

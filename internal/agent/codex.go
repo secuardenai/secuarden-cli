@@ -28,10 +28,11 @@ func IsCodexInstalled() bool {
 // CodexHooksSupported gates installation on the actual installed CLI exposing
 // its hook-trust surface. A config directory alone is not proof of support.
 func CodexHooksSupported() bool {
-	if _, err := exec.LookPath("codex"); err != nil {
+	binary, err := exec.LookPath("codex")
+	if err != nil {
 		return false
 	}
-	output, err := exec.Command("codex", "--help").CombinedOutput()
+	output, err := exec.Command(binary, "--help").CombinedOutput()
 	if err != nil {
 		return false
 	}
@@ -88,7 +89,7 @@ func InstallCodexHooks() error {
 		return err
 	}
 	data = append(data, '\n')
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0600)
 }
 
 func RemoveCodexHooks() error {
@@ -117,7 +118,7 @@ func RemoveCodexHooks() error {
 		return err
 	}
 	data = append(data, '\n')
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0600)
 }
 
 func CodexHooksInstalled() bool {

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/secuardenai/secuarden-cli/internal/agent"
@@ -40,24 +39,22 @@ and a risk evaluation is printed in the terminal before Claude Code exits.
 
 func runInit(cmd *cobra.Command, args []string) error {
 	// 1. Detect supported agents
+	requestedAgent := strings.ToLower(strings.TrimSpace(initAgent))
 	claudeDetected := agent.IsClaudeCodeInstalled()
 	codexDetected := agent.IsCodexInstalled()
-	if initAgent != "auto" && initAgent != "claude-code" && initAgent != "codex" {
+	if requestedAgent != "auto" && requestedAgent != "claude-code" && requestedAgent != "codex" {
 		return fmt.Errorf("invalid --agent %q: choose auto, claude-code, or codex", initAgent)
 	}
-	claudeInstalled := claudeDetected && (initAgent == "auto" || initAgent == "claude-code")
-	codexInstalled := codexDetected && (initAgent == "auto" || initAgent == "codex")
-	if initAgent == "claude-code" && !claudeDetected {
+	claudeInstalled := claudeDetected && (requestedAgent == "auto" || requestedAgent == "claude-code")
+	codexInstalled := codexDetected && (requestedAgent == "auto" || requestedAgent == "codex")
+	if requestedAgent == "claude-code" && !claudeDetected {
 		return fmt.Errorf("Claude Code was requested but ~/.claude/settings.json was not found")
 	}
-	if initAgent == "codex" && !codexDetected {
+	if requestedAgent == "codex" && !codexDetected {
 		return fmt.Errorf("Codex was requested but a hook-capable codex CLI was not found")
 	}
 	if !claudeInstalled && !codexInstalled {
-		fmt.Fprintln(os.Stderr, "✗ No supported AI coding agent detected.")
-		fmt.Fprintln(os.Stderr, "  Secuarden currently supports Claude Code and Codex CLI.")
-		fmt.Fprintln(os.Stderr, "  Ensure a supported agent is installed and has been run at least once.")
-		os.Exit(1)
+		return fmt.Errorf("no supported AI coding agent detected; ensure Claude Code or Codex CLI is installed and has been run at least once")
 	}
 	if claudeInstalled {
 		fmt.Println("✓ Claude Code detected")
@@ -93,7 +90,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		if err := agent.InstallCodexHooks(); err != nil {
 			return fmt.Errorf("install Codex hooks: %w", err)
 		}
-		fmt.Println("✓ Codex hooks installed (PreToolUse, PermissionRequest, PostToolUse, SessionStart, SessionEnd)")
+		fmt.Println("✓ Codex hooks installed")
 	}
 
 	// 4. Create database

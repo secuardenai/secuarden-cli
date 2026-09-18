@@ -23,9 +23,7 @@ func tempSettings(t *testing.T, content string) string {
 // It restores the real HOME after the test.
 func patchHome(t *testing.T, home string) {
 	t.Helper()
-	orig := os.Getenv("HOME")
-	os.Setenv("HOME", home)
-	t.Cleanup(func() { os.Setenv("HOME", orig) })
+	t.Setenv("HOME", home)
 }
 
 func TestInstallHooks_EmptySettings(t *testing.T) {
@@ -183,7 +181,7 @@ func TestInstallCodexHooks_IdempotentAndPreservesExisting(t *testing.T) {
 		t.Fatal(err)
 	}
 	existing := `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"other-tool"}]}]}}`
-	if err := os.WriteFile(filepath.Join(codexDir, "hooks.json"), []byte(existing), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(codexDir, "hooks.json"), []byte(existing), 0600); err != nil {
 		t.Fatal(err)
 	}
 	patchHome(t, dir)

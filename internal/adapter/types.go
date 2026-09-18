@@ -4,6 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+)
+
+const (
+	MaxRawEventPayloadBytes = 10 * 1024 * 1024
+	MaxAttributeEntries     = 64
+	MaxAttributeBytes       = 1 * 1024 * 1024
+	MaxIdentifierLength     = 128
 )
 
 var (
@@ -24,6 +32,13 @@ type RawEvent struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
+func (r RawEvent) Validate() error {
+	if len(r.Payload) > MaxRawEventPayloadBytes {
+		return fmt.Errorf("%w: payload exceeds %d bytes", ErrInvalidInput, MaxRawEventPayloadBytes)
+	}
+	return nil
+}
+
 // ActionProposal is the agent-neutral representation evaluated by the local
 // daemon. Attributes must contain only normalized, JSON-compatible values.
 type ActionProposal struct {
@@ -33,6 +48,30 @@ type ActionProposal struct {
 	ActionType   string                 `json:"action_type"`
 	ToolName     string                 `json:"tool_name,omitempty"`
 	Attributes   map[string]interface{} `json:"attributes,omitempty"`
+}
+
+func (p ActionProposal) Validate() error {
+	for name, value := range map[string]string{
+		"session_id": p.SessionID, "invocation_id": p.InvocationID,
+		"hook": p.Hook, "action_type": p.ActionType, "tool_name": p.ToolName,
+	} {
+		if value == "" && name != "tool_name" {
+			return fmt.Errorf("%w: %s is required", ErrInvalidInput, name)
+		}
+		if len(value) > MaxIdentifierLength || strings.IndexFunc(value, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+			return fmt.Errorf("%w: invalid %s", ErrInvalidInput, name)
+		}
+	}
+	if len(p.Attributes) > MaxAttributeEntries {
+		return fmt.Errorf("%w: too many attributes", ErrInvalidInput)
+	}
+	if len(p.Attributes) > 0 {
+		encoded, err := json.Marshal(p.Attributes)
+		if err != nil || len(encoded) > MaxAttributeBytes {
+			return fmt.Errorf("%w: invalid attributes", ErrInvalidInput)
+		}
+	}
+	return nil
 }
 
 // DecisionKind is a control outcome that an adapter may translate back into

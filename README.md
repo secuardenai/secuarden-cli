@@ -196,7 +196,7 @@ Secuarden Capture Agent v0.1.0
 Capture: Active · Claude Code
 Database: ~/.secuarden/secuarden.db · 76 KB
 Sync: Local only
-Developer: Demo Developer <developer@example.invalid>
+Developer: gaurabb <gaurabb@example.com>
 
 Today
   3 sessions · 52 actions · 14 files read · 6 files changed
@@ -233,7 +233,7 @@ Secuarden Session
 
 Session ID: a1b2c3
 Agent: Claude Code
-Developer: Demo Developer <developer@example.invalid>
+Developer: gaurabb <gaurabb@example.com>
 Repository: https://example.com/secuarden/secuarden-cli.git
 Branch: main
 Started: 2026-07-19T08:00:00Z
@@ -496,6 +496,10 @@ secuarden uninstall --purge
 ```
 
 ## Contributing
+
+See the [policy module documentation](docs/policy.md) for the experimental
+certificate-flow test iteration. This standalone package is not yet connected
+to CLI commands and does not provide production identity verification.
 
 Contributions welcome. The most impactful areas:
 

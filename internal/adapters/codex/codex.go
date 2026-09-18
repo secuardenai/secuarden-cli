@@ -30,8 +30,8 @@ func (Adapter) Descriptor() adapter.Descriptor {
 
 func (Adapter) Capabilities() adapter.Capabilities {
 	return adapter.Capabilities{Hooks: []adapter.HookCapability{
-		{Hook: "PreToolUse", Actions: []string{"file_write", "command_exec", "mcp_tool_use"}, Enforcement: adapter.EnforcementSynchronous, Decisions: []adapter.DecisionKind{adapter.DecisionAllow, adapter.DecisionDeny, adapter.DecisionRequireApproval}},
-		{Hook: "PermissionRequest", Actions: []string{"file_write", "command_exec", "mcp_tool_use"}, Enforcement: adapter.EnforcementSynchronous, Decisions: []adapter.DecisionKind{adapter.DecisionAllow, adapter.DecisionDeny, adapter.DecisionRequireApproval}},
+		{Hook: "PreToolUse", Actions: []string{"file_write", "command_exec", "mcp_tool_use"}, Enforcement: adapter.EnforcementSynchronous, Decisions: []adapter.DecisionKind{adapter.DecisionAllow, adapter.DecisionDeny}},
+		{Hook: "PermissionRequest", Actions: []string{"file_write", "command_exec", "mcp_tool_use"}, Enforcement: adapter.EnforcementSynchronous, Decisions: []adapter.DecisionKind{adapter.DecisionAllow, adapter.DecisionDeny}},
 		{Hook: "PostToolUse", Actions: []string{"file_write", "command_exec", "mcp_tool_use"}, Enforcement: adapter.EnforcementObserveOnly},
 		{Hook: "UserPromptSubmit", Actions: []string{"developer_intent"}, Enforcement: adapter.EnforcementObserveOnly},
 		{Hook: "SessionStart", Actions: []string{"session_start"}, Enforcement: adapter.EnforcementObserveOnly},
@@ -40,6 +40,9 @@ func (Adapter) Capabilities() adapter.Capabilities {
 }
 
 func (a Adapter) Validate(raw adapter.RawEvent) error {
+	if err := raw.Validate(); err != nil {
+		return err
+	}
 	if _, ok := a.Capabilities().ForHook(raw.Hook); !ok {
 		return fmt.Errorf("%w: %s", adapter.ErrUnsupportedHook, raw.Hook)
 	}
@@ -63,7 +66,9 @@ func (a Adapter) Normalize(raw adapter.RawEvent) (adapter.ActionProposal, error)
 		return adapter.ActionProposal{}, err
 	}
 	var v input
-	_ = json.Unmarshal(raw.Payload, &v)
+	if err := json.Unmarshal(raw.Payload, &v); err != nil {
+		return adapter.ActionProposal{}, fmt.Errorf("%w: %v", adapter.ErrInvalidInput, err)
+	}
 	action := "unknown"
 	switch {
 	case raw.Hook == "UserPromptSubmit":
@@ -89,7 +94,17 @@ func (a Adapter) Normalize(raw adapter.RawEvent) (adapter.ActionProposal, error)
 	if v.PermissionStatus != "" {
 		attributes["permission_status"] = v.PermissionStatus
 	}
-	return adapter.ActionProposal{SessionID: v.SessionID, InvocationID: v.ToolUseID, Hook: raw.Hook, ActionType: action, ToolName: v.ToolName, Attributes: attributes}, nil
+	if len(v.ToolInput) > adapter.MaxAttributeBytes {
+		return adapter.ActionProposal{}, fmt.Errorf("%w: tool_input exceeds %d bytes", adapter.ErrInvalidInput, adapter.MaxAttributeBytes)
+	}
+	if len(v.ToolInput) > 0 && string(v.ToolInput) != "null" {
+		attributes["tool_input"] = json.RawMessage(append([]byte(nil), v.ToolInput...))
+	}
+	proposal := adapter.ActionProposal{SessionID: v.SessionID, InvocationID: v.ToolUseID, Hook: raw.Hook, ActionType: action, ToolName: v.ToolName, Attributes: attributes}
+	if err := proposal.Validate(); err != nil {
+		return adapter.ActionProposal{}, err
+	}
+	return proposal, nil
 }
 
 func (a Adapter) RenderDecision(proposal adapter.ActionProposal, decision adapter.PolicyDecision) (adapter.AgentResponse, error) {
@@ -100,9 +115,6 @@ func (a Adapter) RenderDecision(proposal adapter.ActionProposal, decision adapte
 	if !ok || !capability.SupportsDecision(decision.Kind) {
 		return adapter.AgentResponse{}, fmt.Errorf("%w: %s", adapter.ErrUnsupportedDecision, decision.Kind)
 	}
-	if decision.Kind == adapter.DecisionRequireApproval {
-		return adapter.AgentResponse{ExitCode: 0}, nil
-	}
 	behavior := "allow"
 	if decision.Kind == adapter.DecisionDeny {
 		behavior = "deny"
@@ -112,13 +124,19 @@ func (a Adapter) RenderDecision(proposal adapter.ActionProposal, decision adapte
 		if decision.Reason != "" {
 			body["hookSpecificOutput"].(map[string]interface{})["decision"].(map[string]interface{})["message"] = decision.Reason
 		}
-		payload, _ := json.Marshal(body)
+		payload, err := json.Marshal(body)
+		if err != nil {
+			return adapter.AgentResponse{}, fmt.Errorf("marshal Codex decision response: %w", err)
+		}
 		return adapter.AgentResponse{Payload: payload, ExitCode: 0}, nil
 	}
 	body := map[string]interface{}{"hookSpecificOutput": map[string]interface{}{"hookEventName": proposal.Hook, "permissionDecision": behavior}}
 	if decision.Reason != "" {
 		body["hookSpecificOutput"].(map[string]interface{})["permissionDecisionReason"] = decision.Reason
 	}
-	payload, _ := json.Marshal(body)
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return adapter.AgentResponse{}, fmt.Errorf("marshal Codex decision response: %w", err)
+	}
 	return adapter.AgentResponse{Payload: payload, ExitCode: 0}, nil
 }
