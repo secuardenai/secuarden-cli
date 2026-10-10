@@ -25,8 +25,7 @@ import (
 // Version is set at build time via ldflags.
 var Version = "dev"
 
-// maxStdinBytes caps hook input to 10 MB — tool responses are never legitimately
-// larger, and an unbounded read could exhaust memory.
+// maxStdinBytes caps hook input to 10 MiB to bound memory use.
 const maxStdinBytes = 10 * 1024 * 1024
 
 // HandleHookEvent reads stdin, processes the hook event, and writes to SQLite.
@@ -89,10 +88,13 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 	if provider != "anthropic" && provider != "openai" {
 		return fmt.Errorf("unsupported provider %q", provider)
 	}
-	// 1. Read stdin with a hard cap — tool responses are never legitimately huge.
-	data, err := io.ReadAll(io.LimitReader(os.Stdin, maxStdinBytes))
+	// 1. Read one extra byte so oversized input is rejected, not silently truncated.
+	data, err := io.ReadAll(io.LimitReader(os.Stdin, maxStdinBytes+1))
 	if err != nil {
 		return fmt.Errorf("read stdin: %w", err)
+	}
+	if len(data) > maxStdinBytes {
+		return fmt.Errorf("hook input exceeds %d bytes", maxStdinBytes)
 	}
 	if len(data) == 0 {
 		data = []byte("{}")
