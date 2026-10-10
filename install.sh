@@ -38,6 +38,22 @@ case "$ARCH" in
     ;;
 esac
 
+# Only request platform archives included in the release configuration.
+if [ "$OS/$ARCH" = "linux/arm64" ]; then
+  echo "Unsupported platform: linux/arm64 (no release binary is published)" >&2
+  exit 1
+fi
+
+# macOS ships shasum; Linux commonly provides sha256sum.
+if command -v sha256sum >/dev/null 2>&1; then
+  CHECKSUM_TOOL="sha256sum"
+elif command -v shasum >/dev/null 2>&1; then
+  CHECKSUM_TOOL="shasum"
+else
+  echo "Checksum verification requires sha256sum or shasum" >&2
+  exit 1
+fi
+
 # Get the latest release version
 VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
   | grep '"tag_name"' \
@@ -57,8 +73,36 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
 curl -fsSL "$URL" -o "$TMP/$ARCHIVE"
+curl -fsSL "https://github.com/${REPO}/releases/download/${VERSION}/checksums.txt" \
+  -o "$TMP/checksums.txt"
+
+# Select exactly one checksum for this archive; never verify unrelated entries.
+EXPECTED=$(awk -v archive="$ARCHIVE" '$2 == archive { print $1 }' "$TMP/checksums.txt")
+case "$EXPECTED" in
+  "" | *[!0-9a-fA-F]*)
+    echo "Missing, duplicate, or invalid checksum for $ARCHIVE" >&2
+    exit 1
+    ;;
+esac
+if [ "${#EXPECTED}" -ne 64 ]; then
+  echo "Invalid checksum length for $ARCHIVE" >&2
+  exit 1
+fi
+
+if [ "$CHECKSUM_TOOL" = "sha256sum" ]; then
+  ACTUAL=$(sha256sum "$TMP/$ARCHIVE")
+else
+  ACTUAL=$(shasum -a 256 "$TMP/$ARCHIVE")
+fi
+ACTUAL=${ACTUAL%% *}
+EXPECTED=$(printf '%s' "$EXPECTED" | tr 'A-F' 'a-f')
+if [ "$ACTUAL" != "$EXPECTED" ]; then
+  echo "Checksum verification failed for $ARCHIVE; nothing installed" >&2
+  exit 1
+fi
+
 tar -xzf "$TMP/$ARCHIVE" -C "$TMP"
 
 install -m 755 "$TMP/$BINARY" "$INSTALL_DIR/$BINARY"
 echo "Installed secuarden to $INSTALL_DIR/$BINARY"
-echo "Run: secuarden init"
+echo "Run from your Git repository: secuarden init --repo ."
