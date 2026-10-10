@@ -16,6 +16,12 @@ import (
 
 // EventFilter selects captured events. Filters are combined with AND.
 type EventFilter struct {
+	ChangesOnly      bool
+	AgentName        string
+	FilePath         string
+	Command          string
+	FailuresOnly     bool
+	NonPreOnly       bool
 	Limit            int
 	ActionType       string
 	SessionID        string
@@ -83,6 +89,27 @@ func (d *DB) QueryEvents(filter EventFilter) ([]StoredEvent, error) {
 	if filter.ActionType != "" {
 		where = append(where, "action_type = ?")
 		args = append(args, filter.ActionType)
+	}
+	if filter.ChangesOnly {
+		where = append(where, confirmedFileChangeSQL)
+	}
+	if filter.AgentName != "" {
+		where = append(where, "agent_name = ?")
+		args = append(args, filter.AgentName)
+	}
+	if filter.FilePath != "" {
+		where = append(where, "(file_path = ? OR EXISTS (SELECT 1 FROM json_each(COALESCE(affected_files, '[]')) f WHERE json_extract(f.value, '$.path') = ?))")
+		args = append(args, filter.FilePath, filter.FilePath)
+	}
+	if filter.Command != "" {
+		where = append(where, "command = ?")
+		args = append(args, filter.Command)
+	}
+	if filter.FailuresOnly {
+		where = append(where, dashboardFailureSQL)
+	}
+	if filter.NonPreOnly {
+		where = append(where, "hook_phase != 'pre'")
 	}
 	if filter.SessionID != "" {
 		where = append(where, "session_id = ?")
@@ -285,6 +312,7 @@ type RecentSession struct {
 
 // StatusSummary is the captured-data portion of the status presentation.
 type StatusSummary struct {
+	Dashboard       DashboardStats     `json:"dashboard"`
 	Agent           string             `json:"agent"`
 	Today           ActivityCounts     `json:"today"`
 	Attention       []AttentionFinding `json:"attention"`
@@ -353,6 +381,7 @@ func (d *DB) GetStatusSummary(dayStart, dayEnd time.Time, recentLimit int) (*Sta
 		}
 		s.Attention = append(s.Attention, findingsForEvent(e)...)
 	}
+	s.Dashboard = buildDashboardStats(all, dayStart, dayEnd)
 	s.Today.Sessions = len(sessions)
 	s.Today.FilesRead = len(read)
 	s.Today.FilesChanged = len(changed)
