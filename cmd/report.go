@@ -180,7 +180,8 @@ func collectScopedReport(db *storage.DB, since, until time.Time, selected reposi
 			FilesRead: groupReport.FilesRead, FilesChanged: groupReport.FilesChanged,
 			FileEntries: groupReport.FileEntries, Attention: groupReport.Attention,
 			SensitiveAccesses: groupReport.SensitiveAccesses,
-			CommandExecutions: groupReport.CommandExecutions, CommandFailures: groupReport.CommandFailures,
+			CommandExecutions: groupReport.CommandExecutions, CommandSuccesses: groupReport.CommandSuccesses,
+			CommandFailures: groupReport.CommandFailures, CommandUnknowns: groupReport.CommandUnknowns,
 			MCPActivity: groupReport.MCPActivity, Developers: groupReport.Developers, Branches: groupReport.Branches,
 			RepositoryFilesRead: groupReport.RepositoryFilesRead, ExternalFilesRead: groupReport.ExternalFilesRead,
 			RepositoryFilesChanged: groupReport.RepositoryFilesChanged, ExternalFilesChanged: groupReport.ExternalFilesChanged,
@@ -310,9 +311,19 @@ func renderReportWithOptions(w io.Writer, r *storage.AccountabilityReport, markd
 		if markdown {
 			fmt.Fprintf(w, "%s %s\n\n", strings.Repeat("#", level), title)
 		} else if level == 1 {
-			fmt.Fprintf(w, "%s\n\n", title)
+			if colorOutput(w) {
+				fmt.Fprintf(w, "\033[1;97m%s\033[0m\n", title)
+			} else {
+				fmt.Fprintf(w, "%s\n", title)
+			}
+			fmt.Fprintf(w, "%s\n", strings.Repeat("─", len([]rune(title))))
 		} else {
-			fmt.Fprintf(w, "\n%s\n", title)
+			fmt.Fprintln(w)
+			if colorOutput(w) {
+				fmt.Fprintf(w, "\033[1;36m%s\033[0m\n", title)
+			} else {
+				fmt.Fprintf(w, "%s\n", title)
+			}
 		}
 	}
 	bullet := func(text string) {
@@ -328,11 +339,7 @@ func renderReportWithOptions(w io.Writer, r *storage.AccountabilityReport, markd
 		}
 	}
 
-	if markdown {
-		heading(1, "Secuarden accountability report")
-	} else {
-		fmt.Fprintln(w, "Secuarden accountability report")
-	}
+	heading(1, "Secuarden accountability report")
 	repositoryLabel := displayRepositoryIdentity(r.Repository)
 	if repositoryLabel != "" {
 		fmt.Fprintf(w, "Repository: %s\n", repositoryLabel)
@@ -366,11 +373,8 @@ func renderReportSummary(heading func(int, string), bullet func(string), end fun
 	bullet(fmt.Sprintf("%s changed · %s changed",
 		countNoun(r.Totals.RepositoryFilesChanged, "repository file"),
 		countNoun(r.Totals.ExternalFilesChanged, "external file")))
-	succeeded := r.CommandExecutions - r.CommandFailures
-	if succeeded < 0 {
-		succeeded = 0
-	}
-	bullet(fmt.Sprintf("%s succeeded · %d failed", countNoun(succeeded, "command"), r.CommandFailures))
+	bullet(fmt.Sprintf("%s succeeded · %d failed · %d unknown",
+		countNoun(r.CommandSuccesses, "command"), r.CommandFailures, r.CommandUnknowns))
 	if r.Totals.SensitiveAccesses == 0 {
 		bullet("No sensitive-path access")
 	} else {
@@ -466,7 +470,8 @@ func reportFromGroup(group storage.RepositoryReport, since, until string) *stora
 		Since: since, Until: until, Repository: group.Repository, Totals: group.Totals,
 		Agents: group.Agents, FilesRead: group.FilesRead, FilesChanged: group.FilesChanged,
 		FileEntries: group.FileEntries, Attention: group.Attention, SensitiveAccesses: group.SensitiveAccesses,
-		CommandExecutions: group.CommandExecutions, CommandFailures: group.CommandFailures,
+		CommandExecutions: group.CommandExecutions, CommandSuccesses: group.CommandSuccesses,
+		CommandFailures: group.CommandFailures, CommandUnknowns: group.CommandUnknowns,
 		MCPActivity: group.MCPActivity, Developers: group.Developers, Branches: group.Branches,
 		RepositoryFilesRead: group.RepositoryFilesRead, ExternalFilesRead: group.ExternalFilesRead,
 		RepositoryFilesChanged: group.RepositoryFilesChanged, ExternalFilesChanged: group.ExternalFilesChanged,

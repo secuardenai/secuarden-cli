@@ -6,6 +6,133 @@
   "additionalProperties": false,
   "required": ["$schema", "schema_version", "id", "session_id", "sequence", "timestamp", "captured_at", "source", "source_version", "agent_name", "hook_phase", "action_type", "outcome", "permission_status", "execution_status", "privacy_mode", "is_sensitive", "redacted_fields", "completeness", "raw_event_hash"],
   "properties": {
+    "repository_checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "status",
+        "started_at",
+        "finished_at",
+        "previous_sequence",
+        "reasons",
+        "files"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "session_start",
+            "pre",
+            "post",
+            "session_end",
+            "checkpoint"
+          ]
+        },
+        "status": {
+          "enum": [
+            "complete",
+            "partial",
+            "failed"
+          ]
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finished_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "repository": {
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        },
+        "head": {
+          "type": "string"
+        },
+        "tree": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "previous_sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "status",
+              "observed_at",
+              "attribution",
+              "pre_existing",
+              "untracked",
+              "is_sensitive"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "index": {
+                "type": "string"
+              },
+              "staged": {
+                "type": "string"
+              },
+              "unstaged": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "observed_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "attribution": {
+                "enum": [
+                  "unattributed",
+                  "unchanged",
+                  "pre_existing",
+                  "human_or_unattributed",
+                  "agent_associated"
+                ]
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "before_sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "untracked": {
+                "type": "boolean"
+              },
+              "is_sensitive": {
+                "type": "boolean"
+              },
+              "pre_existing": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
     "$schema": {"const": "https://schema.secuarden.ai/stage1/2.0/event.schema.json"},
     "schema_version": {"const": "2.0.0"},
     "id": {"type": "string", "format": "uuid"},
@@ -20,7 +147,7 @@
     "agent_version": {"type": "string"},
     "model": {"type": "string"},
     "provider": {"type": "string"},
-    "hook_phase": {"enum": ["pre", "post", "session_start", "session_end", "intent"]},
+    "hook_phase": {"enum": ["pre", "post", "session_start", "session_end", "intent", "checkpoint"]},
     "action_type": {"enum": ["file_read", "file_write", "file_delete", "command_exec", "network_request", "mcp_tool_use", "subagent_spawn", "plan", "session_start", "session_end", "developer_intent", "notification", "unknown"]},
     "tool_name": {"type": "string"},
     "result_status": {"enum": ["success", "error", "blocked", "rejected", "unknown"]},
@@ -31,6 +158,19 @@
     "is_sensitive": {"type": "boolean"},
     "redacted_fields": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
     "file_path": {"type": "string"},
+    "affected_files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "operation", "is_sensitive"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "operation": {"enum": ["add", "update", "delete", "move_source", "move_destination"]},
+          "is_sensitive": {"type": "boolean"}
+        }
+      }
+    },
     "content_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "diff_stats": {"type": "string", "pattern": "^\\+[0-9]+/-[0-9]+$"},
     "command": {"type": "string"},
@@ -55,7 +195,7 @@
       "required": ["state", "reasons"],
       "properties": {
         "state": {"enum": ["complete", "partial"]},
-        "reasons": {"type": "array", "uniqueItems": true, "items": {"enum": ["missing_invocation_id", "missing_pre_event", "missing_post_event", "adapter_field_unavailable", "capture_error", "legacy_event", "summary_only"]}}
+        "reasons": {"type": "array", "uniqueItems": true, "items": {"enum": ["missing_invocation_id", "missing_pre_event", "missing_post_event", "adapter_field_unavailable", "patch_parse_failed", "capture_error", "legacy_event", "summary_only", "repository_checkpoint_incomplete"]}}
       }
     }
   },

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -66,6 +67,10 @@ var secuardenHooks = map[string][]hookMatcher{
 // InstallHooks merges Secuarden hooks into ~/.claude/settings.json.
 // It backs up the file first and preserves all existing hooks.
 func InstallHooks() error {
+	binary, err := hookExecutable()
+	if err != nil {
+		return fmt.Errorf("resolve hook executable: %w", err)
+	}
 	settingsPath := claudeSettingsPath()
 
 	// Read existing settings
@@ -99,8 +104,18 @@ func InstallHooks() error {
 		// Add our entries
 		for _, m := range matchers {
 			mb, _ := json.Marshal(m)
-			var mRaw interface{}
+			var mRaw map[string]interface{}
 			_ = json.Unmarshal(mb, &mRaw)
+			for _, value := range mRaw["hooks"].([]interface{}) {
+				hook := value.(map[string]interface{})
+				args := hook["args"].([]interface{})
+				command := shellQuote(binary)
+				for _, arg := range args {
+					command += " " + arg.(string)
+				}
+				hook["command"] = command
+				delete(hook, "args")
+			}
 			existing = append(existing, mRaw)
 		}
 		hooks[event] = existing
@@ -266,10 +281,11 @@ func isSecuardenEntry(v interface{}) bool {
 		if !ok {
 			continue
 		}
-		if command, _ := hm["command"].(string); command == "secuarden" || command == "secuarden hook" || (len(command) >= len("secuarden hook ") && command[:len("secuarden hook ")] == "secuarden hook ") {
+		command, _ := hm["command"].(string)
+		if strings.Contains(command, " hook ") && isSecuardenCommand(command) {
 			return true
 		}
-		if cmd, _ := hm["command"].(string); cmd == "secuarden" {
+		if isSecuardenCommand(command) {
 			if args, _ := hm["args"].([]interface{}); len(args) > 0 {
 				if first, _ := args[0].(string); first == "hook" {
 					return true

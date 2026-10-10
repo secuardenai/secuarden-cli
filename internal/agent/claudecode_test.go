@@ -24,6 +24,9 @@ func tempSettings(t *testing.T, content string) string {
 func patchHome(t *testing.T, home string) {
 	t.Helper()
 	t.Setenv("HOME", home)
+	previous := installedExecutable
+	installedExecutable = func() (string, error) { return "/test/bin/secuarden", nil }
+	t.Cleanup(func() { installedExecutable = previous })
 }
 
 func TestInstallHooks_EmptySettings(t *testing.T) {
@@ -215,5 +218,29 @@ func TestInstallCodexHooks_IdempotentAndPreservesExisting(t *testing.T) {
 	}
 	if CodexHooksInstalled() {
 		t.Fatal("Codex hooks should be removed")
+	}
+}
+
+func TestCodexHooksInstalledRecognizesAbsoluteSecuardenPath(t *testing.T) {
+	dir := t.TempDir()
+	codexDir := filepath.Join(dir, ".codex")
+	if err := os.MkdirAll(codexDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	settings := `{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"/usr/local/bin/secuarden hook codex-pre-tool-use"}]}]}}`
+	if err := os.WriteFile(filepath.Join(codexDir, "hooks.json"), []byte(settings), 0600); err != nil {
+		t.Fatal(err)
+	}
+	patchHome(t, dir)
+	if !CodexHooksInstalled() {
+		t.Fatal("absolute Secuarden hook command was not detected")
+	}
+
+	settings = `{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"/usr/local/bin/secuarden-wrapper hook codex-pre-tool-use"}]}]}}`
+	if err := os.WriteFile(filepath.Join(codexDir, "hooks.json"), []byte(settings), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if CodexHooksInstalled() {
+		t.Fatal("unrelated executable was detected as a Secuarden hook")
 	}
 }

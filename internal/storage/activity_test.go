@@ -37,7 +37,7 @@ func seedActivity(t *testing.T, db *DB) {
 	items := []events.Event{
 		{ID: "e1", Sequence: 1, Timestamp: "2026-07-19T08:00:00Z", HookPhase: "pre", ActionType: "file_read", ToolName: "Read", FilePath: "README.md"},
 		{ID: "e2", Sequence: 2, Timestamp: "2026-07-19T08:00:00.100Z", HookPhase: "post", ActionType: "file_read", ToolName: "Read", FilePath: "README.md", ResultStatus: "success"},
-		{ID: "e3", Sequence: 3, Timestamp: "2026-07-19T08:01:00Z", HookPhase: "post", ActionType: "file_write", ToolName: "Edit", FilePath: "main.go", ResultStatus: "success"},
+		{ID: "e3", Sequence: 3, Timestamp: "2026-07-19T08:01:00Z", HookPhase: "post", ActionType: "file_write", ToolName: "Edit", FilePath: "main.go", ResultStatus: "success", Outcome: "success", ExecutionStatus: "completed"},
 		{ID: "e4", Sequence: 4, Timestamp: "2026-07-19T08:02:00Z", HookPhase: "post", ActionType: "command_exec", ToolName: "Bash", Command: "go test ./...", ExitCode: intPtr(1), ResultStatus: "error"},
 		{ID: "e5", Sequence: 5, Timestamp: "2026-07-19T08:03:00Z", HookPhase: "post", ActionType: "file_read", ToolName: "Read", FilePath: ".env.local", IsSensitive: true, RedactedFields: []string{"command_output_preview"}, ResultStatus: "success"},
 		{ID: "e6", Sequence: 6, Timestamp: "2026-07-19T08:04:00Z", HookPhase: "pre", ActionType: "command_exec", ToolName: "Bash", Command: "deploy", ResultStatus: "blocked"},
@@ -151,7 +151,7 @@ func TestReportPathEvidenceFallsBackToSessionWorkingDirectory(t *testing.T) {
 	writeActivityEvent(t, db, events.Event{
 		ID: "relative-event", SessionID: "relative-session", Sequence: 1,
 		Timestamp: "2026-07-19T08:00:00Z", HookPhase: "post",
-		ActionType: "file_write", FilePath: "src/file.go",
+		ActionType: "file_write", FilePath: "src/file.go", Outcome: "success", ExecutionStatus: "completed",
 	})
 	since := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC)
 	report, err := db.GetAccountabilityReportForSessions(since, since.Add(24*time.Hour), []string{"relative-session"}, true)

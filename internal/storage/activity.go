@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/secuardenai/secuarden-cli/internal/events"
+	"github.com/secuardenai/secuarden-cli/internal/repository"
 )
 
 // EventFilter selects captured events. Filters are combined with AND.
@@ -28,44 +29,47 @@ type EventFilter struct {
 // StoredEvent is the privacy-safe event representation returned by activity
 // queries. Every text field comes directly from the already-redacted database.
 type StoredEvent struct {
-	Schema               string              `json:"$schema"`
-	SchemaVersion        string              `json:"schema_version"`
-	ID                   string              `json:"id"`
-	SessionID            string              `json:"session_id"`
-	Sequence             int                 `json:"sequence"`
-	Timestamp            string              `json:"timestamp"`
-	CapturedAt           string              `json:"captured_at"`
-	InvocationID         string              `json:"invocation_id,omitempty"`
-	Source               string              `json:"source"`
-	SourceVersion        string              `json:"source_version"`
-	AgentName            string              `json:"agent_name"`
-	AgentVersion         string              `json:"agent_version,omitempty"`
-	Model                string              `json:"model,omitempty"`
-	Provider             string              `json:"provider,omitempty"`
-	HookPhase            string              `json:"hook_phase"`
-	ActionType           string              `json:"action_type"`
-	ToolName             string              `json:"tool_name,omitempty"`
-	ResultStatus         string              `json:"result_status,omitempty"`
-	Outcome              string              `json:"outcome"`
-	PermissionStatus     string              `json:"permission_status"`
-	ExecutionStatus      string              `json:"execution_status"`
-	PrivacyMode          string              `json:"privacy_mode"`
-	Completeness         events.Completeness `json:"completeness"`
-	IsSensitive          bool                `json:"is_sensitive"`
-	RedactedFields       []string            `json:"redacted_fields"`
-	FilePath             string              `json:"file_path,omitempty"`
-	ContentHash          string              `json:"content_hash,omitempty"`
-	DiffStats            string              `json:"diff_stats,omitempty"`
-	Command              string              `json:"command,omitempty"`
-	ExitCode             *int                `json:"exit_code,omitempty"`
-	CommandOutputPreview string              `json:"command_output_preview,omitempty"`
-	MCPServer            string              `json:"mcp_server,omitempty"`
-	MCPTool              string              `json:"mcp_tool,omitempty"`
-	DurationMS           *int64              `json:"duration_ms,omitempty"`
-	WorkingDirectory     string              `json:"working_directory,omitempty"`
-	GitBranch            string              `json:"git_branch,omitempty"`
-	DeveloperEmail       string              `json:"developer_email,omitempty"`
-	RawEventHash         string              `json:"raw_event_hash"`
+	IntentSummary        string                 `json:"intent_summary,omitempty"`
+	RepositoryCheckpoint *repository.Checkpoint `json:"repository_checkpoint,omitempty"`
+	Schema               string                 `json:"$schema"`
+	SchemaVersion        string                 `json:"schema_version"`
+	ID                   string                 `json:"id"`
+	SessionID            string                 `json:"session_id"`
+	Sequence             int                    `json:"sequence"`
+	Timestamp            string                 `json:"timestamp"`
+	CapturedAt           string                 `json:"captured_at"`
+	InvocationID         string                 `json:"invocation_id,omitempty"`
+	Source               string                 `json:"source"`
+	SourceVersion        string                 `json:"source_version"`
+	AgentName            string                 `json:"agent_name"`
+	AgentVersion         string                 `json:"agent_version,omitempty"`
+	Model                string                 `json:"model,omitempty"`
+	Provider             string                 `json:"provider,omitempty"`
+	HookPhase            string                 `json:"hook_phase"`
+	ActionType           string                 `json:"action_type"`
+	ToolName             string                 `json:"tool_name,omitempty"`
+	ResultStatus         string                 `json:"result_status,omitempty"`
+	Outcome              string                 `json:"outcome"`
+	PermissionStatus     string                 `json:"permission_status"`
+	ExecutionStatus      string                 `json:"execution_status"`
+	PrivacyMode          string                 `json:"privacy_mode"`
+	Completeness         events.Completeness    `json:"completeness"`
+	IsSensitive          bool                   `json:"is_sensitive"`
+	RedactedFields       []string               `json:"redacted_fields"`
+	FilePath             string                 `json:"file_path,omitempty"`
+	AffectedFiles        []events.AffectedFile  `json:"affected_files,omitempty"`
+	ContentHash          string                 `json:"content_hash,omitempty"`
+	DiffStats            string                 `json:"diff_stats,omitempty"`
+	Command              string                 `json:"command,omitempty"`
+	ExitCode             *int                   `json:"exit_code,omitempty"`
+	CommandOutputPreview string                 `json:"command_output_preview,omitempty"`
+	MCPServer            string                 `json:"mcp_server,omitempty"`
+	MCPTool              string                 `json:"mcp_tool,omitempty"`
+	DurationMS           *int64                 `json:"duration_ms,omitempty"`
+	WorkingDirectory     string                 `json:"working_directory,omitempty"`
+	GitBranch            string                 `json:"git_branch,omitempty"`
+	DeveloperEmail       string                 `json:"developer_email,omitempty"`
+	RawEventHash         string                 `json:"raw_event_hash"`
 }
 
 // QueryEvents returns the most recent matching events in chronological order.
@@ -117,12 +121,12 @@ func (d *DB) QueryEvents(filter EventFilter) ([]StoredEvent, error) {
 		       COALESCE(outcome, ''), COALESCE(permission_status, ''), COALESCE(execution_status, ''),
 		       COALESCE(privacy_mode, ''), COALESCE(completeness_state, ''), COALESCE(completeness_reasons, '[]'),
 		       is_sensitive, COALESCE(redacted_fields, '[]'),
-		       COALESCE(file_path, ''), COALESCE(content_hash, ''), COALESCE(diff_stats, ''),
+		       COALESCE(file_path, ''), COALESCE(affected_files, 'null'), COALESCE(content_hash, ''), COALESCE(diff_stats, ''),
 		       COALESCE(command, ''), exit_code,
 		       COALESCE(command_output_preview, ''),
 		       COALESCE(mcp_server, ''), COALESCE(mcp_tool, ''), duration_ms,
 		       COALESCE(report_working_directory, ''), COALESCE(git_branch, ''),
-		       COALESCE(developer_email, ''), COALESCE(raw_event_hash, '')
+		       COALESCE(developer_email, ''), COALESCE(raw_event_hash, ''), COALESCE(repository_checkpoint, 'null'), COALESCE(intent_summary, '')
 		FROM (
 			SELECT events.*,
 			       COALESCE(events.working_directory,
@@ -144,7 +148,7 @@ func (d *DB) QueryEvents(filter EventFilter) ([]StoredEvent, error) {
 	for rows.Next() {
 		var e StoredEvent
 		var sensitive int
-		var redacted string
+		var redacted, affectedFiles, checkpoint string
 		var completenessReasons string
 		var exitCode sql.NullInt64
 		var duration sql.NullInt64
@@ -154,11 +158,14 @@ func (d *DB) QueryEvents(filter EventFilter) ([]StoredEvent, error) {
 			&e.HookPhase, &e.ActionType, &e.ToolName, &e.ResultStatus,
 			&e.Outcome, &e.PermissionStatus, &e.ExecutionStatus, &e.PrivacyMode,
 			&e.Completeness.State, &completenessReasons,
-			&sensitive, &redacted, &e.FilePath, &e.ContentHash, &e.DiffStats, &e.Command,
+			&sensitive, &redacted, &e.FilePath, &affectedFiles, &e.ContentHash, &e.DiffStats, &e.Command,
 			&exitCode, &e.CommandOutputPreview, &e.MCPServer, &e.MCPTool,
-			&duration, &e.WorkingDirectory, &e.GitBranch, &e.DeveloperEmail, &e.RawEventHash,
+			&duration, &e.WorkingDirectory, &e.GitBranch, &e.DeveloperEmail, &e.RawEventHash, &checkpoint, &e.IntentSummary,
 		); err != nil {
 			return nil, fmt.Errorf("scan event: %w", err)
+		}
+		if err := json.Unmarshal([]byte(checkpoint), &e.RepositoryCheckpoint); err != nil {
+			return nil, err
 		}
 		if e.SchemaVersion == events.SchemaVersion {
 			e.Schema = events.SchemaURL
@@ -169,6 +176,7 @@ func (d *DB) QueryEvents(filter EventFilter) ([]StoredEvent, error) {
 		e.IsSensitive = sensitive == 1
 		e.RedactedFields = make([]string, 0)
 		_ = json.Unmarshal([]byte(redacted), &e.RedactedFields)
+		_ = json.Unmarshal([]byte(affectedFiles), &e.AffectedFiles)
 		_ = json.Unmarshal([]byte(completenessReasons), &e.Completeness.Reasons)
 		if exitCode.Valid {
 			v := int(exitCode.Int64)
@@ -284,6 +292,33 @@ type StatusSummary struct {
 	CaptureFailures int                `json:"capture_failures"`
 }
 
+// LatestAgentEvent is the most recent event successfully persisted for an
+// agent. It intentionally contains no event payload or path data.
+type LatestAgentEvent struct {
+	AgentName  string `json:"agent"`
+	CapturedAt string `json:"captured_at"`
+}
+
+// LatestAgentEvents returns the latest persisted event timestamp per agent.
+func (d *DB) LatestAgentEvents() ([]LatestAgentEvent, error) {
+	rows, err := d.db.Query(`
+		SELECT agent_name, MAX(COALESCE(NULLIF(captured_at, ''), timestamp))
+		FROM events GROUP BY agent_name ORDER BY agent_name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]LatestAgentEvent, 0)
+	for rows.Next() {
+		var event LatestAgentEvent
+		if err := rows.Scan(&event.AgentName, &event.CapturedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, event)
+	}
+	return result, rows.Err()
+}
+
 // GetStatusSummary aggregates activity in [dayStart, dayEnd).
 func (d *DB) GetStatusSummary(dayStart, dayEnd time.Time, recentLimit int) (*StatusSummary, error) {
 	all, err := d.QueryEvents(EventFilter{Since: dayStart, Until: dayEnd, Limit: 1000000})
@@ -304,8 +339,8 @@ func (d *DB) GetStatusSummary(dayStart, dayEnd time.Time, recentLimit int) (*Sta
 		if e.ActionType == "file_read" && e.FilePath != "" {
 			read[e.FilePath] = struct{}{}
 		}
-		if (e.ActionType == "file_write" || e.ActionType == "file_delete") && e.FilePath != "" {
-			changed[e.FilePath] = struct{}{}
+		for _, path := range appliedFilePaths(e) {
+			changed[path] = struct{}{}
 		}
 		if e.ActionType == "command_exec" && e.HookPhase != "pre" {
 			s.Today.Commands++
@@ -334,9 +369,13 @@ func (d *DB) GetStatusSummary(dayStart, dayEnd time.Time, recentLimit int) (*Sta
 		       s.started_at, COALESCE(s.ended_at, ''),
 		       COALESCE(s.completeness_state,'complete'), COALESCE(s.capture_failure_count,0),
 		       (SELECT COUNT(*) FROM events e WHERE e.session_id = s.id),
-		       (SELECT COUNT(DISTINCT e.file_path) FROM events e
+		       (SELECT COUNT(DISTINCT COALESCE(json_extract(files.value, '$.path'), e.file_path))
+		        FROM events e LEFT JOIN json_each(COALESCE(e.affected_files, '[]')) files
 		        WHERE e.session_id = s.id AND e.action_type IN ('file_write', 'file_delete')
-		          AND e.file_path IS NOT NULL AND e.file_path != ''),
+		          AND e.hook_phase = 'post'
+		          AND e.outcome = 'success'
+		          AND e.execution_status = 'completed'
+		          AND COALESCE(json_extract(files.value, '$.path'), e.file_path, '') != ''),
 		       (SELECT COUNT(*) FROM events e WHERE e.session_id = s.id AND
 		          ((e.is_sensitive = 1 AND e.hook_phase != 'pre') OR e.result_status IN ('error','failed','failure','blocked','rejected')
 		           OR (e.action_type = 'command_exec' AND e.exit_code IS NOT NULL AND e.exit_code != 0)))
@@ -392,30 +431,35 @@ type MCPActivity struct {
 
 // SessionInvestigation is the complete local view of one session.
 type SessionInvestigation struct {
-	SessionID         string             `json:"session_id"`
-	Agent             string             `json:"agent"`
-	DeveloperName     string             `json:"developer_name,omitempty"`
-	DeveloperEmail    string             `json:"developer_email,omitempty"`
-	Repository        string             `json:"repository,omitempty"`
-	WorkingDirectory  string             `json:"working_directory,omitempty"`
-	Branch            string             `json:"branch,omitempty"`
-	StartedAt         string             `json:"started_at"`
-	EndedAt           string             `json:"ended_at,omitempty"`
-	DurationSeconds   *int64             `json:"duration_seconds,omitempty"`
-	EventCount        int                `json:"event_count"`
-	CountsByAction    []CountByAction    `json:"counts_by_action"`
-	FilesRead         []string           `json:"files_read"`
-	FilesChanged      []string           `json:"files_changed"`
-	Commands          []CommandActivity  `json:"commands"`
-	MCPTools          []MCPActivity      `json:"mcp_tools"`
-	SensitiveAccesses []StoredEvent      `json:"sensitive_accesses"`
-	Attention         []AttentionFinding `json:"attention"`
+	Intents               []string                 `json:"intents"`
+	RepositoryCheckpoints []*repository.Checkpoint `json:"repository_checkpoints"`
+	BaselineStatus        string                   `json:"baseline_status"`
+	EndCheckpointStatus   string                   `json:"end_checkpoint_status"`
+	SessionID             string                   `json:"session_id"`
+	Agent                 string                   `json:"agent"`
+	DeveloperName         string                   `json:"developer_name,omitempty"`
+	DeveloperEmail        string                   `json:"developer_email,omitempty"`
+	Repository            string                   `json:"repository,omitempty"`
+	WorkingDirectory      string                   `json:"working_directory,omitempty"`
+	Branch                string                   `json:"branch,omitempty"`
+	StartedAt             string                   `json:"started_at"`
+	EndedAt               string                   `json:"ended_at,omitempty"`
+	DurationSeconds       *int64                   `json:"duration_seconds,omitempty"`
+	EventCount            int                      `json:"event_count"`
+	CountsByAction        []CountByAction          `json:"counts_by_action"`
+	FilesRead             []string                 `json:"files_read"`
+	FilesChanged          []string                 `json:"files_changed"`
+	Commands              []CommandActivity        `json:"commands"`
+	MCPTools              []MCPActivity            `json:"mcp_tools"`
+	SensitiveAccesses     []StoredEvent            `json:"sensitive_accesses"`
+	Attention             []AttentionFinding       `json:"attention"`
 }
 
 // GetSessionInvestigation returns one session and its captured activity.
 func (d *DB) GetSessionInvestigation(sessionID string) (*SessionInvestigation, error) {
 	s := &SessionInvestigation{
-		SessionID: sessionID, CountsByAction: make([]CountByAction, 0),
+		RepositoryCheckpoints: []*repository.Checkpoint{}, BaselineStatus: "absent", EndCheckpointStatus: "absent",
+		Intents: []string{}, SessionID: sessionID, CountsByAction: make([]CountByAction, 0),
 		FilesRead: make([]string, 0), FilesChanged: make([]string, 0),
 		Commands: make([]CommandActivity, 0), MCPTools: make([]MCPActivity, 0),
 		SensitiveAccesses: make([]StoredEvent, 0), Attention: make([]AttentionFinding, 0),
@@ -448,15 +492,29 @@ func (d *DB) GetSessionInvestigation(sessionID string) (*SessionInvestigation, e
 		return nil, err
 	}
 	s.EventCount = len(events)
+	for _, e := range events {
+		if c := e.RepositoryCheckpoint; c != nil {
+			s.RepositoryCheckpoints = append(s.RepositoryCheckpoints, c)
+			if e.HookPhase == "session_start" && s.BaselineStatus == "absent" {
+				s.BaselineStatus = c.Status
+			}
+			if e.HookPhase == "session_end" {
+				s.EndCheckpointStatus = c.Status
+			}
+		}
+	}
 	counts := map[string]int{}
 	read, changed := map[string]struct{}{}, map[string]struct{}{}
 	for _, e := range events {
 		counts[e.ActionType]++
+		if e.ActionType == "developer_intent" && strings.TrimSpace(e.IntentSummary) != "" {
+			s.Intents = append(s.Intents, e.IntentSummary)
+		}
 		if e.ActionType == "file_read" && e.FilePath != "" {
 			read[e.FilePath] = struct{}{}
 		}
-		if (e.ActionType == "file_write" || e.ActionType == "file_delete") && e.FilePath != "" {
-			changed[e.FilePath] = struct{}{}
+		for _, path := range appliedFilePaths(e) {
+			changed[path] = struct{}{}
 		}
 		if e.ActionType == "command_exec" && e.HookPhase != "pre" {
 			s.Commands = append(s.Commands, CommandActivity{e.Timestamp, e.Command, e.ExitCode, e.ResultStatus})
@@ -518,7 +576,9 @@ type AccountabilityReport struct {
 	SensitiveAccesses      []StoredEvent        `json:"sensitive_accesses"`
 	Attention              []AttentionFinding   `json:"attention"`
 	CommandExecutions      int                  `json:"command_executions"`
+	CommandSuccesses       int                  `json:"command_successes"`
 	CommandFailures        int                  `json:"command_failures"`
+	CommandUnknowns        int                  `json:"command_unknowns"`
 	MCPActivity            []NamedCount         `json:"mcp_activity"`
 	Developers             []NamedCount         `json:"developers"`
 	Branches               []NamedCount         `json:"branches"`
@@ -563,7 +623,9 @@ type RepositoryReport struct {
 	Attention              []AttentionFinding `json:"attention"`
 	SensitiveAccesses      []StoredEvent      `json:"sensitive_accesses"`
 	CommandExecutions      int                `json:"command_executions"`
+	CommandSuccesses       int                `json:"command_successes"`
 	CommandFailures        int                `json:"command_failures"`
+	CommandUnknowns        int                `json:"command_unknowns"`
 	MCPActivity            []NamedCount       `json:"mcp_activity"`
 	Developers             []NamedCount       `json:"developers"`
 	Branches               []NamedCount       `json:"branches"`
@@ -608,16 +670,21 @@ func (d *DB) GetAccountabilityReportForSessions(since, until time.Time, sessionI
 			key := "read\x00" + e.FilePath + "\x00" + e.WorkingDirectory
 			pathEvidence[key] = ReportPathEvidence{FilePath: e.FilePath, WorkingDirectory: e.WorkingDirectory, Kind: "read"}
 		}
-		if (e.ActionType == "file_write" || e.ActionType == "file_delete") && e.FilePath != "" {
-			changed[e.FilePath] = struct{}{}
-			key := "changed\x00" + e.FilePath + "\x00" + e.WorkingDirectory
-			pathEvidence[key] = ReportPathEvidence{FilePath: e.FilePath, WorkingDirectory: e.WorkingDirectory, Kind: "changed"}
+		for _, path := range appliedFilePaths(e) {
+			changed[path] = struct{}{}
+			key := "changed\x00" + path + "\x00" + e.WorkingDirectory
+			pathEvidence[key] = ReportPathEvidence{FilePath: path, WorkingDirectory: e.WorkingDirectory, Kind: "changed"}
 		}
 		if e.ActionType == "command_exec" && e.HookPhase != "pre" {
 			r.Totals.Commands++
 			r.CommandExecutions++
-			if (e.ExitCode != nil && *e.ExitCode != 0) || e.ResultStatus == "error" || e.ResultStatus == "failed" || e.ResultStatus == "failure" {
+			switch confirmedCommandOutcome(e) {
+			case "success":
+				r.CommandSuccesses++
+			case "error":
 				r.CommandFailures++
+			default:
+				r.CommandUnknowns++
 			}
 		}
 		if e.ActionType == "mcp_tool_use" && e.HookPhase != "pre" {
@@ -654,6 +721,36 @@ func (d *DB) GetAccountabilityReportForSessions(since, until time.Time, sessionI
 		r.PathEvidence = append(r.PathEvidence, pathEvidence[key])
 	}
 	return r, nil
+}
+
+func confirmedCommandOutcome(e StoredEvent) string {
+	if (e.ExitCode != nil && *e.ExitCode != 0) || e.Outcome == events.ResultError || e.ExecutionStatus == "failed" ||
+		e.ResultStatus == "error" || e.ResultStatus == "failed" || e.ResultStatus == "failure" {
+		return events.ResultError
+	}
+	if e.Outcome == events.ResultSuccess && e.ExecutionStatus == "completed" {
+		return events.ResultSuccess
+	}
+	return events.ResultUnknown
+}
+
+func appliedFilePaths(e StoredEvent) []string {
+	if e.HookPhase != events.HookPhasePost || (e.ActionType != events.ActionFileWrite && e.ActionType != events.ActionFileDelete) {
+		return nil
+	}
+	if e.Outcome != events.ResultSuccess || e.ExecutionStatus != "completed" {
+		return nil
+	}
+	paths := make([]string, 0, len(e.AffectedFiles))
+	for _, file := range e.AffectedFiles {
+		if file.Path != "" {
+			paths = append(paths, file.Path)
+		}
+	}
+	if len(paths) == 0 && e.FilePath != "" {
+		paths = append(paths, e.FilePath)
+	}
+	return paths
 }
 
 // SessionRepositoryRef contains repository evidence already stored for a session.

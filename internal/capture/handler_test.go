@@ -63,12 +63,47 @@ func TestClaudeOutcomeDoesNotInferPermissionAllowed(t *testing.T) {
 		{events.HookPhasePre, "", "pending", "unknown", "not_started"},
 		{events.HookPhasePost, events.ResultSuccess, "success", "unknown", "completed"},
 		{events.HookPhasePost, events.ResultError, "error", "unknown", "failed"},
+		{events.HookPhasePost, events.ResultUnknown, "unknown", "unknown", "unknown"},
 	}
 	for _, tt := range tests {
 		outcome, permission, execution := outcomeForPhase(tt.phase, tt.result)
 		if outcome != tt.outcome || permission != tt.permission || execution != tt.execution {
 			t.Fatalf("%s/%s = %s/%s/%s", tt.phase, tt.result, outcome, permission, execution)
 		}
+	}
+}
+
+func TestClaudePostToolFixturesRetainOutcomeBehavior(t *testing.T) {
+	tests := []struct {
+		name, fixture, outcome, execution string
+	}{
+		{name: "successful command", fixture: filepath.Join("..", "..", "test", "fixtures", "posttooluse_bash.json"), outcome: "success", execution: "completed"},
+		{name: "failed command", fixture: filepath.Join("..", "..", "docs", "demo", "fixtures", "06-command-post.json"), outcome: "error", execution: "failed"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			if err := config.Save(&config.Config{PrivacyMode: "redacted_content", CaptureScope: config.CaptureScopeAll}); err != nil {
+				t.Fatal(err)
+			}
+			replayHookFixture(t, "post-tool-use", test.fixture)
+			dbPath, err := storage.DefaultDBPath()
+			if err != nil {
+				t.Fatal(err)
+			}
+			db, err := storage.Open(dbPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			captured, err := db.QueryEvents(storage.EventFilter{Limit: 10})
+			if err != nil || len(captured) != 1 {
+				t.Fatalf("events=%d err=%v", len(captured), err)
+			}
+			if captured[0].Outcome != test.outcome || captured[0].ExecutionStatus != test.execution || captured[0].PermissionStatus != "unknown" {
+				t.Fatalf("Claude fixture behavior changed: %#v", captured[0])
+			}
+		})
 	}
 }
 

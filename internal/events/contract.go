@@ -47,6 +47,9 @@ func ValidateProducerInvariants(e *Event) error {
 	if e.PrivacyMode == "metadata_only" && (e.Command != "" || e.CommandOutputPreview != "" || e.IntentSummary != "") {
 		return fmt.Errorf("metadata_only contains content")
 	}
+	if e.IsSensitive && (e.Command != "" || e.CommandOutputPreview != "") {
+		return fmt.Errorf("sensitive event contains content")
+	}
 	if e.RawEventHash == "" || len(e.RawEventHash) != 64 || strings.Trim(e.RawEventHash, "0123456789abcdef") != "" {
 		return fmt.Errorf("raw_event_hash must be lowercase sha256")
 	}

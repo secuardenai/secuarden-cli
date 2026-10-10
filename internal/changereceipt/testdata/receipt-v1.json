@@ -1,0 +1,124 @@
+{
+  "test_only_seed_base64": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=",
+  "artifact": {
+    "envelope": {
+      "payload": {
+        "change_digest": "sha256:9ce939b28a45e6e83dada00adea31493d4e44d764548db75ddfdc6019d47e4d2",
+        "change_schema": "changeledger/v1",
+        "evidence_digest": "sha256:77283e3620f2af21a3cdfeb6974517c208922a9f49e78a450d2c67fa2b2d1c0a",
+        "evidence_schema": "secuarden.receipt-evidence/v1",
+        "git": {
+          "base_commit": "1111111111111111111111111111111111111111",
+          "base_tree": "2222222222222222222222222222222222222222",
+          "head_commit": "3333333333333333333333333333333333333333",
+          "head_tree": "4444444444444444444444444444444444444444",
+          "object_format": "sha1"
+        },
+        "issued_at": "2026-10-10T00:00:00Z",
+        "key_id": "ed25519:sha256:fe812c12f3ab4ce6ac5db69ac352f906cb1b11ef43fb33e252ef7ff552263889",
+        "receipt_id": "00000000-0000-4000-8000-000000000001",
+        "repository": {
+          "full_name": "owner/repo",
+          "id": "123",
+          "provider": "github"
+        },
+        "schema": "secuarden.change-receipt/v1",
+        "tenant_id": "tenant-fixture"
+      },
+      "signature": "bP2N9vOhCRWq38RLsFTFU7Zg8dn4LEMcyVsiaRhT9gMy/9FV5gRtWjbCET0da9nvcNTTHci9eKORDQ95XwdBBg==",
+      "evidence": {
+        "change": {
+          "base_commit": "1111111111111111111111111111111111111111",
+          "base_tree": "2222222222222222222222222222222222222222",
+          "capture_gaps": [],
+          "changed_paths": [
+            {
+              "path": "src/é\u003c\u0026\u003e.go",
+              "source": "",
+              "source_version": "",
+              "status": "M"
+            }
+          ],
+          "digest": "sha256:9ce939b28a45e6e83dada00adea31493d4e44d764548db75ddfdc6019d47e4d2",
+          "head_commit": "3333333333333333333333333333333333333333",
+          "head_tree": "4444444444444444444444444444444444444444",
+          "inferred_links": [],
+          "observations": [],
+          "repository": "github.com/owner/repo",
+          "status": "complete",
+          "version": "changeledger/v1"
+        },
+        "checkpoints": [],
+        "coverage": {
+          "change_digest": "sha256:9ce939b28a45e6e83dada00adea31493d4e44d764548db75ddfdc6019d47e4d2",
+          "conflicts": 0,
+          "duplicates": 0,
+          "inferred_links": [],
+          "matched": 0,
+          "pending": 0,
+          "reasons": [
+            {
+              "code": "no_matching_observations",
+              "detail": "No attributable observations captured.",
+              "observed_at": "2026-10-10T00:00:00Z",
+              "source": "test-fixture",
+              "source_version": "v1",
+              "version": "changeledger/v1"
+            }
+          ],
+          "scopes": [
+            {
+              "session_id": "session-a",
+              "since": "2026-10-10T00:00:00Z",
+              "until": "2026-10-10T01:00:00Z"
+            },
+            {
+              "session_id": "session-b",
+              "since": "2026-10-10T00:00:00Z",
+              "until": "2026-10-10T01:00:00Z"
+            }
+          ],
+          "state": "unobserved",
+          "unmatched": 0,
+          "version": "changeledger/v1"
+        },
+        "inferred_links": [],
+        "observations": [],
+        "schema": "secuarden.receipt-evidence/v1",
+        "scopes": [
+          {
+            "session_id": "session-a",
+            "since": "2026-10-10T00:00:00Z",
+            "until": "2026-10-10T01:00:00Z"
+          },
+          {
+            "session_id": "session-b",
+            "since": "2026-10-10T00:00:00Z",
+            "until": "2026-10-10T01:00:00Z"
+          }
+        ],
+        "snapshot_at": "2026-10-10T00:00:00Z",
+        "sources": {
+          "attribution_version": "codex-observation/v1",
+          "cli_version": "fixture",
+          "normalizer_version": "codex-observation/v1"
+        }
+      }
+    },
+    "public_key": "6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=",
+    "registration": {
+      "key_id": "ed25519:sha256:fe812c12f3ab4ce6ac5db69ac352f906cb1b11ef43fb33e252ef7ff552263889",
+      "tenant_id": "tenant-fixture",
+      "repository": {
+        "provider": "github",
+        "id": "123",
+        "full_name": "owner/repo"
+      },
+      "registered_at": "2026-10-10T00:00:00Z"
+    }
+  },
+  "canonical_payload_utf8": "{\"change_digest\":\"sha256:9ce939b28a45e6e83dada00adea31493d4e44d764548db75ddfdc6019d47e4d2\",\"change_schema\":\"changeledger/v1\",\"evidence_digest\":\"sha256:77283e3620f2af21a3cdfeb6974517c208922a9f49e78a450d2c67fa2b2d1c0a\",\"evidence_schema\":\"secuarden.receipt-evidence/v1\",\"git\":{\"base_commit\":\"1111111111111111111111111111111111111111\",\"base_tree\":\"2222222222222222222222222222222222222222\",\"head_commit\":\"3333333333333333333333333333333333333333\",\"head_tree\":\"4444444444444444444444444444444444444444\",\"object_format\":\"sha1\"},\"issued_at\":\"2026-10-10T00:00:00Z\",\"key_id\":\"ed25519:sha256:fe812c12f3ab4ce6ac5db69ac352f906cb1b11ef43fb33e252ef7ff552263889\",\"receipt_id\":\"00000000-0000-4000-8000-000000000001\",\"repository\":{\"full_name\":\"owner/repo\",\"id\":\"123\",\"provider\":\"github\"},\"schema\":\"secuarden.change-receipt/v1\",\"tenant_id\":\"tenant-fixture\"}",
+  "canonical_evidence_utf8": "{\"change\":{\"base_commit\":\"1111111111111111111111111111111111111111\",\"base_tree\":\"2222222222222222222222222222222222222222\",\"capture_gaps\":[],\"changed_paths\":[{\"path\":\"src/é\u003c\u0026\u003e.go\",\"source\":\"\",\"source_version\":\"\",\"status\":\"M\"}],\"digest\":\"sha256:9ce939b28a45e6e83dada00adea31493d4e44d764548db75ddfdc6019d47e4d2\",\"head_commit\":\"3333333333333333333333333333333333333333\",\"head_tree\":\"4444444444444444444444444444444444444444\",\"inferred_links\":[],\"observations\":[],\"repository\":\"github.com/owner/repo\",\"status\":\"complete\",\"version\":\"changeledger/v1\"},\"checkpoints\":[],\"coverage\":{\"change_digest\":\"sha256:9ce939b28a45e6e83dada00adea31493d4e44d764548db75ddfdc6019d47e4d2\",\"conflicts\":0,\"duplicates\":0,\"inferred_links\":[],\"matched\":0,\"pending\":0,\"reasons\":[{\"code\":\"no_matching_observations\",\"detail\":\"No attributable observations captured.\",\"observed_at\":\"2026-10-10T00:00:00Z\",\"source\":\"test-fixture\",\"source_version\":\"v1\",\"version\":\"changeledger/v1\"}],\"scopes\":[{\"session_id\":\"session-a\",\"since\":\"2026-10-10T00:00:00Z\",\"until\":\"2026-10-10T01:00:00Z\"},{\"session_id\":\"session-b\",\"since\":\"2026-10-10T00:00:00Z\",\"until\":\"2026-10-10T01:00:00Z\"}],\"state\":\"unobserved\",\"unmatched\":0,\"version\":\"changeledger/v1\"},\"inferred_links\":[],\"observations\":[],\"schema\":\"secuarden.receipt-evidence/v1\",\"scopes\":[{\"session_id\":\"session-a\",\"since\":\"2026-10-10T00:00:00Z\",\"until\":\"2026-10-10T01:00:00Z\"},{\"session_id\":\"session-b\",\"since\":\"2026-10-10T00:00:00Z\",\"until\":\"2026-10-10T01:00:00Z\"}],\"snapshot_at\":\"2026-10-10T00:00:00Z\",\"sources\":{\"attribution_version\":\"codex-observation/v1\",\"cli_version\":\"fixture\",\"normalizer_version\":\"codex-observation/v1\"}}",
+  "signed_message_base64": "c2VjdWFyZGVuLmNoYW5nZS1yZWNlaXB0L3YxCnsiY2hhbmdlX2RpZ2VzdCI6InNoYTI1Njo5Y2U5MzliMjhhNDVlNmU4M2RhZGEwMGFkZWEzMTQ5M2Q0ZTQ0ZDc2NDU0OGRiNzVkZGZkYzYwMTlkNDdlNGQyIiwiY2hhbmdlX3NjaGVtYSI6ImNoYW5nZWxlZGdlci92MSIsImV2aWRlbmNlX2RpZ2VzdCI6InNoYTI1Njo3NzI4M2UzNjIwZjJhZjIxYTNjZGZlYjY5NzQ1MTdjMjA4OTIyYTlmNDllNzhhNDUwZDJjNjdmYTJiMmQxYzBhIiwiZXZpZGVuY2Vfc2NoZW1hIjoic2VjdWFyZGVuLnJlY2VpcHQtZXZpZGVuY2UvdjEiLCJnaXQiOnsiYmFzZV9jb21taXQiOiIxMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExIiwiYmFzZV90cmVlIjoiMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMiIsImhlYWRfY29tbWl0IjoiMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMyIsImhlYWRfdHJlZSI6IjQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQiLCJvYmplY3RfZm9ybWF0Ijoic2hhMSJ9LCJpc3N1ZWRfYXQiOiIyMDI2LTEwLTEwVDAwOjAwOjAwWiIsImtleV9pZCI6ImVkMjU1MTk6c2hhMjU2OmZlODEyYzEyZjNhYjRjZTZhYzVkYjY5YWMzNTJmOTA2Y2IxYjExZWY0M2ZiMzNlMjUyZWY3ZmY1NTIyNjM4ODkiLCJyZWNlaXB0X2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwicmVwb3NpdG9yeSI6eyJmdWxsX25hbWUiOiJvd25lci9yZXBvIiwiaWQiOiIxMjMiLCJwcm92aWRlciI6ImdpdGh1YiJ9LCJzY2hlbWEiOiJzZWN1YXJkZW4uY2hhbmdlLXJlY2VpcHQvdjEiLCJ0ZW5hbnRfaWQiOiJ0ZW5hbnQtZml4dHVyZSJ9",
+  "change_projection_utf8": "{\"Version\":\"changeledger/v1\",\"Repository\":\"github.com/owner/repo\",\"BaseCommit\":\"1111111111111111111111111111111111111111\",\"BaseTree\":\"2222222222222222222222222222222222222222\",\"HeadCommit\":\"3333333333333333333333333333333333333333\",\"HeadTree\":\"4444444444444444444444444444444444444444\",\"ChangedPaths\":[{\"status\":\"M\",\"path\":\"src/é\\u003c\\u0026\\u003e.go\"}]}"
+}

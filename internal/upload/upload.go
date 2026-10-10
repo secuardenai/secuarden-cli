@@ -85,8 +85,18 @@ func ReadLastFeedback() *StoredFeedback {
 // and returns developer feedback if the changeset evaluator responds.
 // Never returns a hard error — upload failures are non-fatal.
 func SyncSession(cfg *config.Config, summary *storage.SessionSummary) (*Feedback, error) {
+	// Select credentials from the captured session's repository, never the
+	// caller's cwd or legacy user-wide credentials.
+	var err error
+	if summary.WorkingDirectory == "" {
+		return nil, fmt.Errorf("sync: session has no repository working directory")
+	}
+	cfg, err = config.ForRepository(cfg, summary.WorkingDirectory)
+	if err != nil {
+		return nil, fmt.Errorf("sync: resolve session repository: %w", err)
+	}
 	if !cfg.SyncEnabled || cfg.APIKey == "" {
-		return nil, nil
+		return nil, fmt.Errorf("SaaS integration is not enabled for this repository; run `secuarden init --api-key ...` in that repository")
 	}
 
 	// Reject non-HTTPS endpoints — the API key must not travel in plaintext.

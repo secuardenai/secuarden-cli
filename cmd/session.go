@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var sessionJSON bool
+var sessionJSON, sessionFull bool
 
 var sessionCmd = &cobra.Command{
 	Use:   "session <id>",
@@ -22,6 +22,7 @@ var sessionCmd = &cobra.Command{
 
 func init() {
 	sessionCmd.Flags().BoolVar(&sessionJSON, "json", false, "emit stable JSON")
+	sessionCmd.Flags().BoolVar(&sessionFull, "full", false, "show all captured session details")
 }
 
 func runSession(cmd *cobra.Command, args []string) error {
@@ -44,10 +45,17 @@ func runSession(cmd *cobra.Command, args []string) error {
 	if sessionJSON {
 		return writeJSON(cmd.OutOrStdout(), session)
 	}
+	if sessionFull {
+		return renderSessionFull(cmd.OutOrStdout(), session)
+	}
 	return renderSession(cmd.OutOrStdout(), session)
 }
 
 func renderSession(w io.Writer, s *storage.SessionInvestigation) error {
+	return renderSessionSummary(w, s)
+}
+
+func renderSessionFull(w io.Writer, s *storage.SessionInvestigation) error {
 	fmt.Fprintln(w, "Secuarden Session")
 	fmt.Fprintf(w, "\nSession ID: %s\n", s.SessionID)
 	fmt.Fprintf(w, "Agent: %s\n", displayAgent(s.Agent))
@@ -62,6 +70,7 @@ func renderSession(w io.Writer, s *storage.SessionInvestigation) error {
 		fmt.Fprintln(w, "Duration: In progress or unavailable")
 	}
 	fmt.Fprintf(w, "Events: %d\n", s.EventCount)
+	fmt.Fprintf(w, "Repository baseline: %s\nFinal checkpoint: %s\n", s.BaselineStatus, s.EndCheckpointStatus)
 
 	fmt.Fprintln(w, "\nActions")
 	if len(s.CountsByAction) == 0 {

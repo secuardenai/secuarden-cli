@@ -1,6 +1,9 @@
 package events
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"github.com/secuardenai/secuarden-cli/internal/repository"
+)
 
 const SchemaURL = "https://schema.secuarden.ai/stage1/2.0/event.schema.json"
 const SchemaVersion = "2.0.0"
@@ -8,8 +11,9 @@ const SchemaVersion = "2.0.0"
 // Event is a governance event captured from an AI coding agent session.
 // It matches the JSON schema at schema/stage1/v2/event.schema.json.
 type Event struct {
-	Schema        string `json:"$schema"`
-	SchemaVersion string `json:"schema_version"`
+	RepositoryCheckpoint *repository.Checkpoint `json:"repository_checkpoint,omitempty"`
+	Schema               string                 `json:"$schema"`
+	SchemaVersion        string                 `json:"schema_version"`
 
 	ID           string `json:"id"`
 	SessionID    string `json:"session_id"`
@@ -39,9 +43,10 @@ type Event struct {
 	IsSensitive    bool     `json:"is_sensitive"`
 	RedactedFields []string `json:"redacted_fields"`
 
-	FilePath    string `json:"file_path,omitempty"`
-	ContentHash string `json:"content_hash,omitempty"`
-	DiffStats   string `json:"diff_stats,omitempty"`
+	FilePath      string         `json:"file_path,omitempty"`
+	AffectedFiles []AffectedFile `json:"affected_files,omitempty"`
+	ContentHash   string         `json:"content_hash,omitempty"`
+	DiffStats     string         `json:"diff_stats,omitempty"`
 
 	Command              string `json:"command,omitempty"`
 	ExitCode             *int   `json:"exit_code,omitempty"`
@@ -80,6 +85,7 @@ const (
 	HookPhaseSessionStart = "session_start"
 	HookPhaseSessionEnd   = "session_end"
 	HookPhaseIntent       = "intent"
+	HookPhaseCheckpoint   = "checkpoint"
 )
 
 // ActionType constants
@@ -136,4 +142,8 @@ type RawHookInput struct {
 	// ToolResponseRaw preserves arbitrary JSON values such as Codex arrays or
 	// scalar tool results.
 	ToolResponseRaw json.RawMessage `json:"-"`
+	// ToolResultStatus and ToolResultSupported carry agent-specific outcome
+	// normalization without changing the canonical evidence schema.
+	ToolResultStatus    string `json:"-"`
+	ToolResultSupported bool   `json:"-"`
 }

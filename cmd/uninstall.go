@@ -16,7 +16,7 @@ var (
 
 var uninstallCmd = &cobra.Command{
 	Use:   "uninstall",
-	Short: "Remove Secuarden hooks from Claude Code",
+	Short: "Remove Secuarden hooks from supported agents",
 	RunE:  runUninstall,
 }
 
