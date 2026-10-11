@@ -298,12 +298,32 @@ func isSecuardenEntry(v interface{}) bool {
 	return false
 }
 
+// removeSecuardenEntries removes only owned handlers, retaining the matcher
+// and its metadata when unrelated handlers share the same group.
 func removeSecuardenEntries(matchers []interface{}) []interface{} {
 	var result []interface{}
-	for _, m := range matchers {
-		if !isSecuardenEntry(m) {
-			result = append(result, m)
+	for _, entry := range matchers {
+		if !isSecuardenEntry(entry) {
+			result = append(result, entry)
+			continue
 		}
+		group := entry.(map[string]interface{})
+		var kept []interface{}
+		for _, hook := range group["hooks"].([]interface{}) {
+			single := map[string]interface{}{"hooks": []interface{}{hook}}
+			if !isSecuardenEntry(single) {
+				kept = append(kept, hook)
+			}
+		}
+		if len(kept) == 0 {
+			continue
+		}
+		replacement := make(map[string]interface{}, len(group))
+		for key, value := range group {
+			replacement[key] = value
+		}
+		replacement["hooks"] = kept
+		result = append(result, replacement)
 	}
 	return result
 }
