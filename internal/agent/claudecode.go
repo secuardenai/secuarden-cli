@@ -33,7 +33,9 @@ var secuardenHooks = map[string][]hookMatcher{
 		{
 			Matcher: "*",
 			Hooks: []hookEntry{
-				{Type: "command", Command: "secuarden", Args: []string{"hook", "pre-tool-use"}, Timeout: 5, Async: true},
+				// Persist the before-state checkpoint before Claude starts the tool.
+				// An async pre-hook can finish after the corresponding post-hook.
+				{Type: "command", Command: "secuarden", Args: []string{"hook", "pre-tool-use"}, Timeout: 5, Async: false},
 			},
 		},
 	},
