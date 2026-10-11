@@ -44,10 +44,11 @@ func Open(path string) (*DB, error) {
 
 	// modernc.org/sqlite ignores mattn-style DSN params. Apply pragmas explicitly.
 	// WAL allows concurrent readers + one writer across processes.
-	// busy_timeout makes writers wait up to 5 s instead of returning SQLITE_BUSY.
+	// Set busy_timeout before journal_mode: selecting WAL can itself encounter
+	// a lock held by another hook opening the same database.
 	for _, pragma := range []string{
-		"PRAGMA journal_mode=WAL",
 		"PRAGMA busy_timeout=5000",
+		"PRAGMA journal_mode=WAL",
 		"PRAGMA foreign_keys=ON",
 	} {
 		if _, err := db.Exec(pragma); err != nil {
