@@ -85,11 +85,18 @@ required trust. Cursor, Copilot, and Windsurf integrations are not included.
 
 ## Demo
 
-![Secuarden CLI local accountability demo](docs/demo/secuarden-terminal-demo.gif)
+![Current Secuarden CLI: repository setup, activity investigation, and evidence verification](docs/demo/secuarden-terminal-demo.gif)
 
-> This earlier Claude Code demo replays sanitized hook fixtures using the actual
-> Secuarden binary in an isolated temporary HOME. It is not a live agent session
-> and makes no SaaS call. It predates current setup, which requires `--repo PATH`.
+See repository-scoped setup, inspect captured activity and sensitive-path access,
+and verify the stored evidence with the current CLI.
+
+> Reproducible walkthrough using synthetic Claude Code hook payloads and actual
+> CLI output. Runs in a disposable local environment; no live agent or SaaS call.
+> The reported test failure is simulated. Hash verification checks stored records,
+> not capture completeness.
+
+[Read the demo transcript](docs/demo/transcript.txt) ·
+[Reproduce the demo](docs/demo/README.md)
 
 ## What you can inspect
 

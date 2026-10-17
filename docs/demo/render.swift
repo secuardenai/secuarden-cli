@@ -20,17 +20,17 @@ guard !frameURLs.isEmpty else {
     exit(1)
 }
 
-let width = 960
-let height = 640
+let width = 1200
+let height = 800
 let padding = 30.0
-let font = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
-let boldFont = NSFont.monospacedSystemFont(ofSize: 14, weight: .semibold)
+let font = NSFont.monospacedSystemFont(ofSize: 17, weight: .regular)
+let boldFont = NSFont.monospacedSystemFont(ofSize: 17, weight: .semibold)
 let background = NSColor(calibratedRed: 0.055, green: 0.067, blue: 0.09, alpha: 1)
 let foreground = NSColor(calibratedRed: 0.85, green: 0.89, blue: 0.94, alpha: 1)
 let accent = NSColor(calibratedRed: 0.33, green: 0.78, blue: 0.65, alpha: 1)
 let warning = NSColor(calibratedRed: 1.0, green: 0.72, blue: 0.31, alpha: 1)
 let muted = NSColor(calibratedRed: 0.55, green: 0.62, blue: 0.7, alpha: 1)
-let lineHeight = 18.0
+let lineHeight = 23.0
 
 guard let destination = CGImageDestinationCreateWithURL(
     outputURL as CFURL,
@@ -94,19 +94,28 @@ for (index, frameURL) in frameURLs.enumerated() {
             color = foreground
             selectedFont = font
         }
+        if (value as NSString).size(withAttributes: [.font: selectedFont]).width > Double(width) - 2 * padding {
+            fputs("Line exceeds horizontal bounds: \(frameURL.lastPathComponent)\n", stderr)
+            exit(1)
+        }
         (value as NSString).draw(
             at: NSPoint(x: padding, y: y),
             withAttributes: [.font: selectedFont, .foregroundColor: color]
         )
         y -= lineHeight
-        if y < padding { break }
+        if y < padding {
+            fputs("Frame exceeds vertical bounds: \(frameURL.lastPathComponent)\n", stderr)
+            exit(1)
+        }
     }
     NSGraphicsContext.restoreGraphicsState()
 
     guard let image = bitmap.cgImage else {
         fatalError("could not create image frame")
     }
-    let delay = index == frameURLs.count - 1 ? 4.0 : 2.8
+    let pngURL = outputURL.deletingLastPathComponent().appendingPathComponent("preview-\(index + 1).png")
+    try bitmap.representation(using: .png, properties: [:])!.write(to: pngURL)
+    let delay = index == frameURLs.count - 1 ? 5.0 : 7.0
     let frameProperties: [CFString: Any] = [
         kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: delay]
     ]
