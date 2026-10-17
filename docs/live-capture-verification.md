@@ -1,5 +1,7 @@
 # Live capture verification
 
+[Back to README](../README.md)
+
 `init` configures hooks and arms a 15-minute verification window for each configured agent. Installation succeeds with **verification pending**, including unattended installation. It never waits for interactive input for this verification step. To start again:
 
 ```sh
@@ -41,7 +43,22 @@ Keep the executable installed: hooks use its absolute path. This build replaces 
 7. Expect persisted request and corresponding result evidence, with a last-verified timestamp. Run `"$SECUARDEN_LIVE_DIR/secuarden" status` from the repository and confirm the same timestamp. The command must still say **client surface unknown / VS Code not independently verified**. Human observation of steps 4–5 supplies the VS Code association for manual acceptance; the current hook payload cannot prove it automatically.
 8. Negative checks: arm again and check the old session ID (must reject it); arm and start a new conversation without performing a tool action (must not report a tool round-trip). An unrelated desktop session must not satisfy a check pinned to the intended VS Code session ID. Changing hook settings must mark the previous result stale. Do not change production hook settings solely to exercise this last case; automated isolated fixtures cover it.
 
-No live acceptance has been performed as part of implementation. Automated tests use synthetic fixtures and are not live acceptance evidence.
+## Recorded manual validation — 17 October 2026
+
+On macOS ARM64, source commit `73f5170` was tested with the Codex VS Code
+extension `26.1007.21434`. A fresh conversation in the selected disposable Git
+repository ran `pwd`. Verification of that exact session reported a persisted
+tool request and corresponding result at **2026-10-17T04:54:20Z**; `status`
+reported the same last-verified timestamp. The operator's VS Code test and local
+session metadata established the manual client association. The verifier
+continued to report the client surface as unknown.
+
+After the original hook configuration was restored, status correctly marked the
+historical result stale. This was a focused round-trip check, not completion of
+every acceptance or negative check above. It did not validate other platforms,
+full checkpoint completeness, hash integrity, receipt upload, observation-inbox
+processing, or SaaS delivery. Automated fixtures remain separate from live
+acceptance evidence.
 
 ## Incomplete results
 

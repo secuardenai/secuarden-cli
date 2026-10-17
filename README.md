@@ -16,7 +16,7 @@ cd /path/to/your/repository
 secuarden init --repo .
 ```
 
-These instructions describe this branch's capabilities. Until its release is
+These instructions describe the source on `main`. Until the 1.0 release is
 published, the installer downloads the latest published release, which may not
 include every workflow below. To try this checkout, [build from source](#contributing).
 
@@ -40,6 +40,34 @@ not produce a meaningful activity history. If the log is empty, follow the
 A new repository stays local-only without an API key. Re-running setup preserves
 existing sync settings. Capture scope defaults to all supported sessions for the
 OS user; use `--scope repo` to limit it to the selected repository.
+
+### Confirm capture works
+
+`init` installs hooks and arms a 15-minute verification window. **Verification
+pending** means setup completed, but runtime delivery has not yet been confirmed.
+To start a fresh check for Codex in VS Code:
+
+```bash
+secuarden verify-live --repo . --agent codex --client vscode
+```
+
+Start a **new conversation in that repository**, ask it to run `pwd`, and obtain
+that conversation's exact session ID from the client or its associated local
+session record. Then check it within the window:
+
+```bash
+secuarden verify-live --repo . --agent codex --client vscode \
+  --session EXACT_SESSION_ID --wait 60s
+secuarden status
+```
+
+Replace `EXACT_SESSION_ID` with the actual ID. For Claude Code, use
+`--agent claude-code` and the appropriate intended `--client` value.
+A verified result establishes a persisted tool request and matching result;
+it does not certify tool success, hash integrity, or SaaS delivery. The client
+label is user-declared, not independently established by hook evidence.
+See the [live-verification guide](docs/live-capture-verification.md) for activation,
+exact-session selection, pending results, and stale verification diagnostics.
 
 ### Platforms and agents
 
@@ -116,6 +144,11 @@ runtimes, or incomplete sessions can leave gaps. Hash verification detects
 changes to covered records; it does not establish complete capture or prove who
 wrote every line. Observation correlations report inferred links and limitations.
 
+Parallel tool calls can have complete request/result pairs while repository
+checkpoints remain **partial** because their before/after snapshots overlap.
+Live verification and checkpoint completeness are separate checks; a successful
+round-trip does not remove checkpoint uncertainty.
+
 Secuarden complements code and security scanners. It does not replace SAST,
 secret scanning, dependency analysis, prompt-injection testing, or organizational
 approval controls. Its CI gate evaluates captured evidence against deterministic
@@ -138,6 +171,7 @@ without complete hashing cannot gain integrity coverage retroactively; see
 ## Guides
 
 - [Setup, agent configuration, capture checks, and uninstall](docs/setup.md)
+- [Live capture verification and troubleshooting](docs/live-capture-verification.md)
 - [Activity commands, dashboard, reports, and verification](docs/activity.md)
 - [Git ledger, Codex observations, and signed receipts](docs/ledger.md)
 - [Architecture and evidence contracts](docs/architecture.md)

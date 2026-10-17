@@ -11,6 +11,7 @@ and reporting remain separate:
 - `secuarden events` — chronological raw capture events. Combine `--last`, `--action`, `--session`, and `--sensitive`; add `--json` for scripts.
 - `secuarden session <id>` — files, commands and outcomes, MCP calls, sensitive accesses, and failures for one session; supports `--json`.
 - `secuarden report` — a 24-hour accountability report scoped to the current Git repository by default. Use `--repo`, `--all-repos`, `--absolute-paths`, `--limit`, `--md`, or `--json` as needed.
+- `secuarden verify-live` — check persisted request/result delivery for an exact fresh agent session; see [live verification](live-capture-verification.md).
 - `secuarden verify` — recompute the per-session SHA-256 chains and identify the exact session/sequence of modified evidence.
 - `secuarden bom` — export file-write provenance, agent/model/developer context, risk reasons, content hashes, and integrity status as an AI-BOM JSON document.
 - `secuarden gate` — return a non-zero exit code when AI-authored file changes meet a configurable deterministic risk threshold.
@@ -26,6 +27,21 @@ attention summaries with drilldowns into captured events. File-change summaries
 count confirmed successful changes, including multiple paths in a patch. Command
 summaries distinguish passed, failed, and unknown outcomes. Unknown outcomes do
 not count as success.
+
+### Partial checkpoint evidence
+
+A session can contain matching pre/post tool events and still have partial
+repository checkpoints. Parallel calls can overlap while snapshots are collected,
+so the recorded predecessor may differ from the one used during capture. Reasons
+such as `concurrent_capture` and `pre_checkpoint_absent` retain that uncertainty.
+The latter can mean the immediately preceding checkpoint is not the matching
+pre-hook; it does not by itself prove the pre-event was never captured.
+
+Claude's pre-tool hook waits for its checkpoint before the corresponding tool
+runs, subject to the hook timeout. Separate parallel tool calls can still overlap.
+Synchronous capture adds latency that depends on repository size and contention.
+A successful `verify-live` result does not establish complete repository
+checkpoints or replace hash verification.
 
 ### Provenance integrity and CI gate
 
