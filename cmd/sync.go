@@ -16,7 +16,7 @@ var (
 
 var syncCmd = &cobra.Command{
 	Use:   "sync",
-	Short: "Upload captured sessions pending SaaS delivery",
+	Short: "Upload captured sessions using each repository's configured SaaS API key",
 	Args:  cobra.NoArgs,
 	RunE:  runSync,
 }
@@ -30,9 +30,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
-	}
-	if !cfg.SyncEnabled || cfg.APIKey == "" {
-		return fmt.Errorf("SaaS sync is not enabled; run `secuarden init --api-key ...`")
 	}
 	path, err := storage.DefaultDBPath()
 	if err != nil {

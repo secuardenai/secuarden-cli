@@ -36,6 +36,7 @@ func (Adapter) Capabilities() adapter.Capabilities {
 		{Hook: "UserPromptSubmit", Actions: []string{"developer_intent"}, Enforcement: adapter.EnforcementObserveOnly},
 		{Hook: "SessionStart", Actions: []string{"session_start"}, Enforcement: adapter.EnforcementObserveOnly},
 		{Hook: "SessionEnd", Actions: []string{"session_end"}, Enforcement: adapter.EnforcementObserveOnly},
+		{Hook: "Stop", Actions: []string{"session_end"}, Enforcement: adapter.EnforcementObserveOnly},
 	}}
 }
 
@@ -54,7 +55,7 @@ func (a Adapter) Validate(raw adapter.RawEvent) error {
 		return fmt.Errorf("%w: missing session_id", adapter.ErrInvalidInput)
 	}
 	if raw.Hook == "PreToolUse" || raw.Hook == "PermissionRequest" || raw.Hook == "PostToolUse" {
-		if v.ToolName == "" || v.ToolUseID == "" {
+		if v.ToolName == "" || (raw.Hook != "PermissionRequest" && v.ToolUseID == "") {
 			return fmt.Errorf("%w: missing tool_name or tool_use_id", adapter.ErrInvalidInput)
 		}
 	}

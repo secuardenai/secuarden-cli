@@ -5,10 +5,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// hookCmd is hidden from --help; it's invoked by Claude Code hooks only.
+// hookCmd is hidden from --help; it's invoked by supported agent hooks only.
 var hookCmd = &cobra.Command{
 	Use:    "hook",
-	Short:  "Internal: process a Claude Code hook event from stdin",
+	Short:  "Internal: process a supported agent hook event from stdin",
 	Hidden: true,
 }
 
@@ -66,5 +66,6 @@ func init() {
 	hookCmd.AddCommand(codexHookCommand("codex-post-tool-use", "post-tool-use"))
 	hookCmd.AddCommand(codexHookCommand("codex-session-start", "session-start"))
 	hookCmd.AddCommand(codexHookCommand("codex-session-end", "session-end"))
+	hookCmd.AddCommand(codexHookCommand("codex-stop", "stop"))
 	hookCmd.AddCommand(codexHookCommand("codex-user-prompt-submit", "user-prompt-submit"))
 }

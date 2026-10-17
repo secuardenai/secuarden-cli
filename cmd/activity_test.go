@@ -112,7 +112,7 @@ func TestRenderStatusAggregationAndCleanState(t *testing.T) {
 	if err := renderStatus(&out, view); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Capture: Active · Claude Code", "3 sessions · 52 actions", "None detected", "secuarden events", "secuarden report"} {
+	for _, want := range []string{"Capture:", "Configured · Claude Code", "3 sessions · 52 actions", "None detected", "secuarden events", "secuarden report"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("status missing %q:\n%s", want, out.String())
 		}
@@ -131,7 +131,7 @@ func TestRenderStatusShowsPrivacyAndCaptureFailure(t *testing.T) {
 	if err := renderStatus(&out, view); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Privacy: metadata_only", "Capture health", "1 event could not be persisted", "partial evidence"} {
+	for _, want := range []string{"Privacy:", "metadata_only", "Capture health", "1 event could not be persisted", "partial evidence"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("status missing %q:\n%s", want, out.String())
 		}
@@ -172,6 +172,49 @@ func TestMarkdownReportOutput(t *testing.T) {
 	}
 }
 
+func TestReportCountsConfirmedCommandOutcomes(t *testing.T) {
+	db, err := storage.Open(filepath.Join(t.TempDir(), "activity.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.EnsureSession("command-outcomes", "codex", "/work"); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []*events.Event{
+		{ID: "command-success", Outcome: "success", ExecutionStatus: "completed", ResultStatus: "success"},
+		{ID: "command-failure", Outcome: "error", ExecutionStatus: "failed", ResultStatus: "error"},
+		{ID: "command-unknown", Outcome: "unknown", ExecutionStatus: "unknown", ResultStatus: "unknown"},
+	} {
+		event.SessionID = "command-outcomes"
+		event.Timestamp = "2026-09-25T01:00:00Z"
+		event.Source = "secuarden-cli"
+		event.AgentName = "codex"
+		event.HookPhase = events.HookPhasePost
+		event.ActionType = events.ActionCommandExec
+		if err := db.WriteEvent(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	report, err := db.GetAccountabilityReport(
+		time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 9, 26, 0, 0, 0, 0, time.UTC),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.CommandExecutions != 3 || report.CommandSuccesses != 1 || report.CommandFailures != 1 || report.CommandUnknowns != 1 {
+		t.Fatalf("command outcome counts are inaccurate: %#v", report)
+	}
+	var out bytes.Buffer
+	if err := renderReportWithOptions(&out, report, false, 10, time.UTC); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "1 command succeeded · 1 failed · 1 unknown") {
+		t.Fatalf("report did not distinguish command outcomes:\n%s", out.String())
+	}
+}
+
 func TestTerminalReportCompactHeading(t *testing.T) {
 	report := &storage.AccountabilityReport{
 		Since: "2026-07-18T00:00:00Z", Until: "2026-07-19T00:00:00Z",
@@ -183,8 +226,8 @@ func TestTerminalReportCompactHeading(t *testing.T) {
 	if err := renderReportWithOptions(&out, report, false, 10, time.UTC); err != nil {
 		t.Fatal(err)
 	}
-	want := "Secuarden accountability report\nPeriod: Last 24 hours · 18 Jul 00:00 – 19 Jul 00:00 UTC"
-	if !strings.HasPrefix(out.String(), want) {
+	want := "Secuarden accountability report\n" + strings.Repeat("─", len([]rune("Secuarden accountability report"))) + "\n"
+	if !strings.HasPrefix(out.String(), want) || !strings.Contains(out.String(), "Period: Last 24 hours · 18 Jul 00:00 – 19 Jul 00:00 UTC") {
 		t.Fatalf("terminal report heading mismatch:\n%s", out.String())
 	}
 	if strings.Contains(out.String(), "###") {
@@ -284,6 +327,7 @@ func TestCollectScopedReportAndJSONPathCompatibility(t *testing.T) {
 			ID: fmt.Sprintf("event-change-%d", i), SessionID: "session-a", Sequence: i + 2,
 			Timestamp: fmt.Sprintf("2026-07-19T08:0%d:00Z", i+1), Source: "secuarden-cli",
 			AgentName: "claude-code", HookPhase: "post", ActionType: "file_write",
+			Outcome: "success", ExecutionStatus: "completed",
 			FilePath: path, WorkingDirectory: repoA, DeveloperEmail: "dev@example.com", GitBranch: "main",
 		}
 		if err := db.WriteEvent(event); err != nil {
@@ -511,5 +555,16 @@ func TestRenderSessionSensitiveAndBlocked(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "[SENSITIVE] file_read · .env") || !strings.Contains(out.String(), "Blocked action · deploy · blocked") {
 		t.Fatalf("unexpected session output:\n%s", out.String())
+	}
+}
+
+func TestDisabledCodexIsNotReportedActive(t *testing.T) {
+	var out bytes.Buffer
+	view := statusView{CodexHooks: true, CodexState: "disabled", CodexReason: "Secuarden hooks individually disabled in Codex: SessionStart", Summary: &storage.StatusSummary{}}
+	if err := renderStatus(&out, view); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Capture:") || !strings.Contains(out.String(), "Inactive · Codex · see capability details below") || !strings.Contains(out.String(), "Codex capability:") || !strings.Contains(out.String(), "disabled") || strings.Contains(out.String(), "Capture: Active") {
+		t.Fatalf("misleading status: %s", out.String())
 	}
 }

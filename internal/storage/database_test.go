@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/secuardenai/secuarden-cli/internal/events"
 )
@@ -583,6 +584,7 @@ func TestVerifyIntegrityDetectsEveryProtectedEventField(t *testing.T) {
 		"is_sensitive":           "0",
 		"redacted_fields":        `["file_path"]`,
 		"file_path":              "src/tampered.go",
+		"affected_files":         `[{"path":"src/tampered.go","operation":"update","is_sensitive":false}]`,
 		"content_hash":           "sha256:tampered",
 		"diff_stats":             "+99/-99",
 		"command":                "malicious command",
@@ -622,6 +624,30 @@ func TestVerifyIntegrityDetectsEveryProtectedEventField(t *testing.T) {
 				t.Fatalf("tampering with %s was not detected: %+v", column, result)
 			}
 		})
+	}
+}
+
+func TestListWriteProvenanceRequiresPostEvidenceAndExpandsAffectedFiles(t *testing.T) {
+	db, _ := tempDB(t)
+	if err := db.EnsureSession("patch-provenance", "codex", "/work"); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range []*events.Event{
+		{ID: "proposal", SessionID: "patch-provenance", Timestamp: "2026-08-01T00:00:00Z", Source: "secuarden-cli", AgentName: "codex", HookPhase: "pre", ActionType: "file_write", FilePath: "proposed.txt"},
+		{ID: "applied", SessionID: "patch-provenance", Timestamp: "2026-08-01T00:00:01Z", Source: "secuarden-cli", AgentName: "codex", HookPhase: "post", ActionType: "file_write", Outcome: "success", ExecutionStatus: "completed", FilePath: "one.txt", AffectedFiles: []events.AffectedFile{{Path: "one.txt", Operation: "update"}, {Path: ".env", Operation: "add", IsSensitive: true}}},
+		{ID: "unknown", SessionID: "patch-provenance", Timestamp: "2026-08-01T00:00:02Z", Source: "secuarden-cli", AgentName: "codex", HookPhase: "post", ActionType: "file_write", Outcome: "unknown", ExecutionStatus: "unknown", FilePath: "unknown.txt"},
+		{ID: "failed", SessionID: "patch-provenance", Timestamp: "2026-08-01T00:00:03Z", Source: "secuarden-cli", AgentName: "codex", HookPhase: "post", ActionType: "file_write", Outcome: "error", ExecutionStatus: "failed", FilePath: "failed.txt"},
+	} {
+		if err := db.WriteEvent(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	records, err := db.ListWriteProvenance(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 || records[0].FilePath != "one.txt" || records[1].FilePath != ".env" || !records[1].IsSensitive {
+		t.Fatalf("provenance=%#v", records)
 	}
 }
 
@@ -676,7 +702,7 @@ func TestIntegrityHashesAreDeterministic(t *testing.T) {
 		t.Fatal(err)
 	}
 	second, err := computeEventHashV2("previous", event, `["command"]`)
-	if err != nil || first != second || !strings.HasPrefix(first, eventHashPrefix) {
+	if err != nil || first != second || !strings.HasPrefix(first, legacyEventHashPrefix) {
 		t.Fatalf("event hashes are not deterministic: %q %q err=%v", first, second, err)
 	}
 

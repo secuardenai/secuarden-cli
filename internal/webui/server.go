@@ -24,6 +24,8 @@ type Server struct {
 }
 
 type overview struct {
+	PeriodStart string                 `json:"period_start"`
+	PeriodEnd   string                 `json:"period_end"`
 	Version     string                 `json:"version"`
 	GeneratedAt string                 `json:"generated_at"`
 	Summary     *storage.StatusSummary `json:"summary"`
@@ -58,7 +60,7 @@ func (s *Server) overview(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, err, http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, overview{Version: s.version, GeneratedAt: now.UTC().Format(time.RFC3339), Summary: summary})
+	writeJSON(w, overview{Version: s.version, GeneratedAt: now.UTC().Format(time.RFC3339), Summary: summary, PeriodStart: dayStart.Format(time.RFC3339), PeriodEnd: dayStart.AddDate(0, 0, 1).Format(time.RFC3339)})
 }
 
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
@@ -71,11 +73,37 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = value
 	}
+	var since, until time.Time
+	for _, bound := range []struct {
+		name string
+		dest *time.Time
+	}{{"since", &since}, {"until", &until}} {
+		if raw := r.URL.Query().Get(bound.name); raw != "" {
+			value, err := time.Parse(time.RFC3339, raw)
+			if err != nil {
+				writeError(w, errors.New(bound.name+" must be RFC3339"), http.StatusBadRequest)
+				return
+			}
+			*bound.dest = value
+		}
+	}
+	if !since.IsZero() && !until.IsZero() && !since.Before(until) {
+		writeError(w, errors.New("since must be before until"), http.StatusBadRequest)
+		return
+	}
 	result, err := s.db.QueryEvents(storage.EventFilter{
-		Limit:      limit,
-		ActionType: r.URL.Query().Get("action"),
-		SessionID:  r.URL.Query().Get("session"),
-		Sensitive:  r.URL.Query().Get("sensitive") == "true",
+		NonPreOnly:   r.URL.Query().Get("non_pre") == "true",
+		Limit:        limit,
+		ActionType:   r.URL.Query().Get("action"),
+		ChangesOnly:  r.URL.Query().Get("changes") == "true",
+		AgentName:    r.URL.Query().Get("agent"),
+		FilePath:     r.URL.Query().Get("file"),
+		Command:      r.URL.Query().Get("command"),
+		FailuresOnly: r.URL.Query().Get("failures") == "true",
+		SessionID:    r.URL.Query().Get("session"),
+		Sensitive:    r.URL.Query().Get("sensitive") == "true",
+		Since:        since,
+		Until:        until,
 	})
 	if err != nil {
 		writeError(w, err, http.StatusInternalServerError)

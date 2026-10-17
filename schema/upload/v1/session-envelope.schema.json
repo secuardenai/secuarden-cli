@@ -6,6 +6,7 @@
   "additionalProperties": false,
   "required": ["$schema", "schema_version", "session_id", "agent_name", "event_count", "privacy_mode", "completeness", "capture_failure_count", "events", "idempotency_key"],
   "properties": {
+    "repository_checkpoint_status": {"type":"object","additionalProperties":false,"required":["baseline","end"],"properties":{"baseline":{"enum":["absent","complete","partial","failed"]},"end":{"enum":["absent","complete","partial","failed"]}}},
     "$schema": {"const": "https://schema.secuarden.ai/upload/1.0/session-envelope.schema.json"},
     "schema_version": {"const": "1.0.0"},
     "session_id": {"type": "string", "minLength": 1},

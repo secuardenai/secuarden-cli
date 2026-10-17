@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -32,7 +33,9 @@ var secuardenHooks = map[string][]hookMatcher{
 		{
 			Matcher: "*",
 			Hooks: []hookEntry{
-				{Type: "command", Command: "secuarden", Args: []string{"hook", "pre-tool-use"}, Timeout: 5, Async: true},
+				// Persist the before-state checkpoint before Claude starts the tool.
+				// An async pre-hook can finish after the corresponding post-hook.
+				{Type: "command", Command: "secuarden", Args: []string{"hook", "pre-tool-use"}, Timeout: 5, Async: false},
 			},
 		},
 	},
@@ -66,6 +69,10 @@ var secuardenHooks = map[string][]hookMatcher{
 // InstallHooks merges Secuarden hooks into ~/.claude/settings.json.
 // It backs up the file first and preserves all existing hooks.
 func InstallHooks() error {
+	binary, err := hookExecutable()
+	if err != nil {
+		return fmt.Errorf("resolve hook executable: %w", err)
+	}
 	settingsPath := claudeSettingsPath()
 
 	// Read existing settings
@@ -99,8 +106,18 @@ func InstallHooks() error {
 		// Add our entries
 		for _, m := range matchers {
 			mb, _ := json.Marshal(m)
-			var mRaw interface{}
+			var mRaw map[string]interface{}
 			_ = json.Unmarshal(mb, &mRaw)
+			for _, value := range mRaw["hooks"].([]interface{}) {
+				hook := value.(map[string]interface{})
+				args := hook["args"].([]interface{})
+				command := shellQuote(binary)
+				for _, arg := range args {
+					command += " " + arg.(string)
+				}
+				hook["command"] = command
+				delete(hook, "args")
+			}
 			existing = append(existing, mRaw)
 		}
 		hooks[event] = existing
@@ -266,10 +283,11 @@ func isSecuardenEntry(v interface{}) bool {
 		if !ok {
 			continue
 		}
-		if command, _ := hm["command"].(string); command == "secuarden" || command == "secuarden hook" || (len(command) >= len("secuarden hook ") && command[:len("secuarden hook ")] == "secuarden hook ") {
+		command, _ := hm["command"].(string)
+		if strings.Contains(command, " hook ") && isSecuardenCommand(command) {
 			return true
 		}
-		if cmd, _ := hm["command"].(string); cmd == "secuarden" {
+		if isSecuardenCommand(command) {
 			if args, _ := hm["args"].([]interface{}); len(args) > 0 {
 				if first, _ := args[0].(string); first == "hook" {
 					return true
@@ -280,12 +298,32 @@ func isSecuardenEntry(v interface{}) bool {
 	return false
 }
 
+// removeSecuardenEntries removes only owned handlers, retaining the matcher
+// and its metadata when unrelated handlers share the same group.
 func removeSecuardenEntries(matchers []interface{}) []interface{} {
 	var result []interface{}
-	for _, m := range matchers {
-		if !isSecuardenEntry(m) {
-			result = append(result, m)
+	for _, entry := range matchers {
+		if !isSecuardenEntry(entry) {
+			result = append(result, entry)
+			continue
 		}
+		group := entry.(map[string]interface{})
+		var kept []interface{}
+		for _, hook := range group["hooks"].([]interface{}) {
+			single := map[string]interface{}{"hooks": []interface{}{hook}}
+			if !isSecuardenEntry(single) {
+				kept = append(kept, hook)
+			}
+		}
+		if len(kept) == 0 {
+			continue
+		}
+		replacement := make(map[string]interface{}, len(group))
+		for key, value := range group {
+			replacement[key] = value
+		}
+		replacement["hooks"] = kept
+		result = append(result, replacement)
 	}
 	return result
 }

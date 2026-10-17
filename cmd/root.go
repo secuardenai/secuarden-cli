@@ -8,9 +8,10 @@ import (
 var Version = "dev"
 
 var rootCmd = &cobra.Command{
-	Use:   "secuarden",
-	Short: "Secuarden capture agent for AI coding sessions",
-	Long:  "Secuarden captures governance events from AI coding agent sessions to a local SQLite database.",
+	Use:              "secuarden",
+	Short:            "Secuarden capture agent for AI coding sessions",
+	Long:             "Secuarden captures governance events from AI coding agent sessions to a local SQLite database.",
+	PersistentPreRun: prepareCommandOutput,
 }
 
 // Execute runs the root command.

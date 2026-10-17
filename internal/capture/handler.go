@@ -17,6 +17,7 @@ import (
 	"github.com/secuardenai/secuarden-cli/internal/events"
 	"github.com/secuardenai/secuarden-cli/internal/identity"
 	"github.com/secuardenai/secuarden-cli/internal/privacy"
+	"github.com/secuardenai/secuarden-cli/internal/scope"
 	"github.com/secuardenai/secuarden-cli/internal/storage"
 	"github.com/secuardenai/secuarden-cli/internal/upload"
 )
@@ -24,8 +25,7 @@ import (
 // Version is set at build time via ldflags.
 var Version = "dev"
 
-// maxStdinBytes caps hook input to 10 MB — tool responses are never legitimately
-// larger, and an unbounded read could exhaust memory.
+// maxStdinBytes caps hook input to 10 MiB to bound memory use.
 const maxStdinBytes = 10 * 1024 * 1024
 
 // HandleHookEvent reads stdin, processes the hook event, and writes to SQLite.
@@ -60,14 +60,16 @@ func parseCodexInput(data []byte) (*events.RawHookInput, error) {
 		return nil, fmt.Errorf("Codex hook input: missing hook_event_name")
 	}
 	codexInput := adapter.RawEvent{Hook: hookName, Payload: data}
-	if _, err := (codexadapter.Adapter{}).Normalize(codexInput); err != nil {
+	// Capture lifecycle observations are not enforceable action proposals and
+	// do not require a tool invocation ID.
+	if err := (codexadapter.Adapter{}).Validate(codexInput); err != nil {
 		return nil, err
 	}
 	toolInput, _, err := events.ParseJSONObject(codex.ToolInput)
 	if err != nil {
 		return nil, fmt.Errorf("parse Codex tool_input: %w", err)
 	}
-	toolResponse, _, err := events.ParseJSONObject(codex.ToolResponse)
+	toolResult, err := events.NormalizeCodexToolResponse(codex.ToolResponse, codex.ToolName)
 	if err != nil {
 		return nil, fmt.Errorf("parse Codex tool_response: %w", err)
 	}
@@ -77,7 +79,8 @@ func parseCodexInput(data []byte) (*events.RawHookInput, error) {
 		PermissionMode: codex.PermissionMode, HookEventName: codex.HookEventName,
 		Reason: codex.Reason, PermissionStatus: codex.PermissionStatus,
 		Timestamp: "", ToolInput: toolInput, ToolInputRaw: codex.ToolInput,
-		ToolResponse: toolResponse, ToolResponseRaw: codex.ToolResponse,
+		ToolResponse: toolResult.Fields, ToolResponseRaw: codex.ToolResponse,
+		ToolResultStatus: toolResult.ResultStatus, ToolResultSupported: toolResult.Supported,
 	}, nil
 }
 
@@ -85,10 +88,13 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 	if provider != "anthropic" && provider != "openai" {
 		return fmt.Errorf("unsupported provider %q", provider)
 	}
-	// 1. Read stdin with a hard cap — tool responses are never legitimately huge.
-	data, err := io.ReadAll(io.LimitReader(os.Stdin, maxStdinBytes))
+	// 1. Read one extra byte so oversized input is rejected, not silently truncated.
+	data, err := io.ReadAll(io.LimitReader(os.Stdin, maxStdinBytes+1))
 	if err != nil {
 		return fmt.Errorf("read stdin: %w", err)
+	}
+	if len(data) > maxStdinBytes {
+		return fmt.Errorf("hook input exceeds %d bytes", maxStdinBytes)
 	}
 	if len(data) == 0 {
 		data = []byte("{}")
@@ -101,6 +107,21 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 	raw, err := parse(data)
 	if err != nil {
 		return fmt.Errorf("parse input: %w", err)
+	}
+
+	// Scope is evaluated before UUID generation, field extraction, file hashing,
+	// identity capture, session creation, or event persistence. A skipped hook
+	// records only an aggregate diagnostic counter.
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	decision := scope.Evaluate(cfg, raw.CWD)
+	if !decision.Allowed {
+		if err := recordScopeSkip(decision.Reason); err != nil {
+			return fmt.Errorf("record scope decision: %w", err)
+		}
+		return nil
 	}
 
 	// Ensure session_id is present
@@ -121,11 +142,34 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 	filePath := events.ExtractFilePath(raw.ToolInput)
 	command := events.ExtractCommand(raw.ToolInput)
 	diffStats := events.ExtractDiffStats(raw.ToolInput)
+	var affectedFiles []events.AffectedFile
+	patchLimited := false
+	if agentName == "codex" && toolName == "apply_patch" {
+		parsed, stats, patchErr := events.ParseApplyPatch(command)
+		if patchErr != nil {
+			// The patch may contain sensitive material whose paths could not be
+			// established. Treat it conservatively and retain no content.
+			patchLimited = true
+			filePath = ""
+			diffStats = ""
+		} else {
+			affectedFiles = parsed
+			filePath = affectedFiles[0].Path
+			diffStats = stats
+		}
+	}
 	exitCode := events.ExtractExitCode(raw.ToolResponse)
 	outputPreview := events.ExtractOutputPreview(raw.ToolResponse)
 	resultStatus := ""
 	if hookPhase == events.HookPhasePost {
-		resultStatus = events.ExtractResultStatus(raw.ToolResponse)
+		if agentName == "codex" {
+			resultStatus = raw.ToolResultStatus
+			if resultStatus == "" {
+				resultStatus = events.ResultUnknown
+			}
+		} else {
+			resultStatus = events.ExtractResultStatus(raw.ToolResponse)
+		}
 	}
 
 	// MCP server/tool parsing
@@ -135,20 +179,21 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 	}
 
 	// 7–8. Privacy: sensitive check and/or redaction
-	cfg, err := config.Load()
-	if err != nil {
-		return fmt.Errorf("load config: %w", err)
-	}
 	privacyMode := cfg.PrivacyMode
 	if privacyMode == "" {
 		privacyMode = "redacted_content"
 	}
-	isSensitive := false
+	isSensitive := patchLimited
 	var redactedFields []string
 	contentHash := computeFileHash(resolveFilePath(raw.CWD, filePath))
 
-	if filePath != "" {
-		isSensitive = privacy.IsSensitivePath(filePath)
+	if len(affectedFiles) > 0 {
+		for i := range affectedFiles {
+			affectedFiles[i].IsSensitive = privacy.IsSensitivePath(resolveFilePath(raw.CWD, affectedFiles[i].Path))
+			isSensitive = isSensitive || affectedFiles[i].IsSensitive
+		}
+	} else if filePath != "" {
+		isSensitive = privacy.IsSensitivePath(resolveFilePath(raw.CWD, filePath))
 	}
 
 	if isSensitive {
@@ -250,8 +295,16 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 		executionStatus = "not_started"
 	}
 	completeness := events.Completeness{State: "complete", Reasons: []string{}}
+	if patchLimited {
+		completeness = events.Completeness{State: "partial", Reasons: []string{"patch_parse_failed"}}
+	}
+	if agentName == "codex" && hookPhase == events.HookPhasePost && !raw.ToolResultSupported {
+		completeness.State = "partial"
+		completeness.Reasons = appendUnique(completeness.Reasons, "adapter_field_unavailable")
+	}
 	if (hookPhase == events.HookPhasePre || hookPhase == events.HookPhasePost) && raw.ToolUseID == "" {
-		completeness = events.Completeness{State: "partial", Reasons: []string{"missing_invocation_id"}}
+		completeness.State = "partial"
+		completeness.Reasons = appendUnique(completeness.Reasons, "missing_invocation_id")
 	}
 
 	e := &events.Event{
@@ -280,6 +333,7 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 		IsSensitive:          isSensitive,
 		RedactedFields:       redactedFields,
 		FilePath:             filePath,
+		AffectedFiles:        affectedFiles,
 		ContentHash:          contentHash,
 		DiffStats:            diffStats,
 		Command:              command,
@@ -301,6 +355,7 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 		e.GitBranch = dev.GitBranch
 		e.GitRepoURL = gitRepoURL
 	}
+	addCheckpoint(db, e)
 	if err := db.WriteEvent(e); err != nil {
 		_ = db.RecordCaptureFailure(sessionID, hookPhase, "event_persistence_rejected")
 		return err
@@ -314,6 +369,19 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 	}
 
 	return nil
+}
+
+func recordScopeSkip(reason string) error {
+	dbPath, err := storage.DefaultDBPath()
+	if err != nil {
+		return err
+	}
+	db, err := storage.Open(dbPath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	return db.RecordScopeSkip(reason)
 }
 
 func normalizePermissionStatus(value string) (string, bool) {
@@ -343,6 +411,8 @@ func normalizePhase(phase string) string {
 		return events.HookPhaseSessionEnd
 	case "user-prompt-submit":
 		return events.HookPhaseIntent
+	case "stop":
+		return events.HookPhaseCheckpoint
 	default:
 		return phase
 	}
@@ -360,6 +430,8 @@ func mapPhaseToActionForAgent(agentName, phase, toolName string) string {
 		return events.ActionSessionEnd
 	case events.HookPhaseIntent:
 		return events.ActionDeveloperIntent
+	case events.HookPhaseCheckpoint:
+		return events.ActionNotification
 	default:
 		if agentName == "codex" {
 			return events.MapCodexToolToAction(toolName)
@@ -383,10 +455,22 @@ func outcomeForPhase(phase, result string) (string, string, string) {
 		if result == events.ResultError {
 			return "error", "unknown", "failed"
 		}
+		if result == events.ResultUnknown {
+			return "unknown", "unknown", "unknown"
+		}
 		return "success", "unknown", "completed"
 	default:
 		return "success", "not_applicable", "completed"
 	}
+}
+
+func appendUnique(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 func computeFileHash(path string) string {
@@ -411,13 +495,20 @@ func computeFileHash(path string) string {
 // All errors are swallowed — sync is best-effort and must never block capture.
 func syncOnSessionEnd(sessionID string, db *storage.DB) {
 	cfg, err := config.Load()
-	if err != nil || !cfg.SyncEnabled {
+	if err != nil {
 		return
 	}
 
 	summary, err := db.ReadSessionSummary(sessionID)
 	if err != nil {
 		logError(fmt.Errorf("sync: read session summary: %w", err))
+		return
+	}
+	if summary.WorkingDirectory == "" {
+		return
+	}
+	resolved, err := config.ForRepository(cfg, summary.WorkingDirectory)
+	if err != nil || !resolved.SyncEnabled {
 		return
 	}
 

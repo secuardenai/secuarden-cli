@@ -23,11 +23,18 @@
       <button id="refresh" class="refresh" type="button">Refresh records</button>
     </section>
 
-    <section class="metrics" aria-label="Today's capture summary">
-      <article><span>Sessions today</span><strong id="sessions-count">—</strong></article>
-      <article><span>Actions captured</span><strong id="actions-count">—</strong></article>
-      <article><span>Files changed</span><strong id="files-count">—</strong></article>
-      <article><span>Capture failures</span><strong id="failures-count">—</strong></article>
+    <section class="dashboard" aria-label="Today's capture summary">
+      <div class="dashboard-heading"><div><p class="eyebrow">Today</p><h2>Capture at a glance</h2></div><span>Choose a block to inspect its records</span></div>
+      <div class="summary-grid">
+        <article class="summary-card" id="overview-card"><h3>Overview</h3><div class="stat-pairs"><div><span>Events</span><strong id="actions-count">—</strong></div><div><span>Sessions</span><strong id="sessions-count">—</strong></div><div><span>Files changed</span><strong id="files-count">—</strong></div><div><span>Capture failures</span><strong id="failures-count">—</strong></div></div><button class="card-link" type="button" data-drill="all">View records <span aria-hidden="true">↗</span></button></article>
+        <article class="summary-card" id="activity-card"><h3>Activity</h3><div id="activity-bars" class="bar-list"></div><p class="card-note" id="activity-note"></p></article>
+        <article class="summary-card" id="agents-card"><h3>Agents</h3><div id="agent-list" class="summary-list"></div></article>
+        <article class="summary-card" id="timeline-card"><h3>Timeline <small>events by hour</small></h3><div id="timeline-bars" class="timeline" role="group" aria-label="Events by hour"></div><div class="axis"><span>00</span><span>06</span><span>12</span><span>18</span><span>23</span></div></article>
+        <article class="summary-card" id="changes-card"><h3>Code changes</h3><strong class="card-number" id="changed-count">—</strong><p class="card-note">Files with confirmed writes or deletes</p><div id="changed-list" class="summary-list compact"></div><button class="card-link" type="button" data-drill="changes">View file records <span aria-hidden="true">↗</span></button></article>
+        <article class="summary-card" id="commands-card"><h3>Commands</h3><div class="split-stat command-stats"><div><strong id="command-count">—</strong><span>observed</span></div><div><strong id="command-passed">—</strong><span>passed</span></div><div><strong id="command-failed">—</strong><span>failed</span></div><div><strong id="command-unknown">—</strong><span>unknown</span></div></div><div id="command-list" class="summary-list compact"></div><button class="card-link" type="button" data-drill="commands">View command records <span aria-hidden="true">↗</span></button></article>
+        <article class="summary-card" id="errors-card"><h3>Errors</h3><div class="split-stat"><div><strong id="error-count">—</strong><span>errors</span></div><div><strong id="blocked-count">—</strong><span>blocked</span></div><div><strong id="rejected-count">—</strong><span>rejected</span></div></div><p class="card-note"><span id="partial-count">—</span> partial records · <span id="sensitive-count">—</span> sensitive accesses</p><button class="card-link" type="button" data-drill="errors">View flagged records <span aria-hidden="true">↗</span></button></article>
+        <article class="summary-card" id="sessions-card"><h3>Sessions</h3><strong class="card-number" id="session-total">—</strong><p class="card-note">Sessions active today · recent sessions below</p><div id="session-peek" class="summary-list compact"></div><button class="card-link" type="button" data-drill="sessions">Browse sessions <span aria-hidden="true">↗</span></button></article>
+      </div>
     </section>
 
     <section class="workspace">
@@ -36,7 +43,7 @@
         <div id="session-list" class="session-list" aria-live="polite"></div>
       </aside>
 
-      <div class="ledger">
+      <div class="ledger" id="evidence-stream">
         <div class="section-heading ledger-heading">
           <div><p class="eyebrow">Records</p><h2>Evidence stream</h2></div>
           <span id="record-count" class="record-count">0 records</span>
@@ -47,6 +54,8 @@
               <option value="">All actions</option>
               <option value="file_read">File read</option>
               <option value="file_write">File write</option>
+              <option value="file_delete">File delete</option>
+              <option value="tool_use">Other tool</option>
               <option value="command_exec">Command</option>
               <option value="mcp_tool_use">MCP tool</option>
               <option value="developer_intent">Developer intent</option>
@@ -55,7 +64,8 @@
             </select>
           </label>
           <label class="check"><input id="sensitive-filter" type="checkbox"> Sensitive only</label>
-          <button id="clear-session" class="clear-filter" type="button" hidden>Clear session filter</button>
+          <span id="active-filter" class="active-filter" hidden></span>
+          <button id="clear-session" class="clear-filter" type="button" hidden>Clear filters</button>
         </div>
         <div class="table-wrap">
           <table>

@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS events (
     is_sensitive INTEGER NOT NULL DEFAULT 0,
     redacted_fields TEXT,
     file_path TEXT,
+    affected_files TEXT,
+    repository_checkpoint TEXT,
     content_hash TEXT,
     diff_stats TEXT,
     command TEXT,
