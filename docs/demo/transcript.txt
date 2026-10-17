@@ -1,0 +1,91 @@
+01 / SET UP REPOSITORY CAPTURE
+$ secuarden init --repo . --agent claude-code --scope repo --receipt-mode explicit
+✓ Claude Code detected (shared Claude settings)
+Receipt creation: explicit
+✓ Local-only mode (pass --api-key to enable SaaS sync)
+✓ Claude Code hooks installed
+✓ Secuarden hooks installed for this OS user
+  Capture scope: this repository only (/demo/repository)
+  Configuration: ~/.secuarden/config.json
+  Local database: ~/.secuarden/secuarden.db
+  Cloud sync: disabled
+  Scope applies to the current OS user.
+✓ Database created at /demo/home/.secuarden/secuarden.db
+✓ Developer identity: Demo Developer <developer@example.invalid>
+
+Installation configured. Live capture verification is pending; this is not an installation failure.
+  secuarden status
+Hooks configured; live verification pending (15-minute window).
+Start a NEW conversation in /demo/repository using the intended unknown client. Ask the agent to run the harmless command `pwd`. Obtain that conversation's exact session/thread ID from the client or its local session record; do not select an unrelated session from recent activity.
+Then run:
+  secuarden verify-live --repo "/demo/repository" --agent claude-code --client unknown --session <exact-session-id> --wait 60s
+Client surface is user-declared and cannot be independently verified. No prompt/command text is needed.
+Hook trust and client activation are not verified. If configuration may not have loaded: save work and finish active tasks, reload/restart the relevant client, start a new conversation in the intended repository, review hook approval prompts if presented, then repeat verification. Stale configuration is only a possible cause.
+Setup is configured. A replay does not establish live runtime delivery.
+
+02 / WHAT DID THE AGENT TOUCH?
+$ secuarden events --last 8
+2026-10-17T06:56:08.987748Z  file_read         .env.example [SENSITIVE]
+  status: success
+2026-10-17T06:56:09.222227Z  file_write        src/auth/middleware.ts
+2026-10-17T06:56:09.462022Z  file_write        src/auth/middleware.ts
+  status: success
+2026-10-17T06:56:09.687323Z  command_exec      npm test
+2026-10-17T06:56:09.906509Z  command_exec      npm test
+  status: error · exit: 1
+2026-10-17T06:56:10.128632Z  mcp_tool_use      docs/lookup
+2026-10-17T06:56:10.34674Z  mcp_tool_use      docs/lookup
+  status: success
+2026-10-17T06:56:10.580604Z  session_end       a1b2c3d4-e5f6-7890-abcd-ef1234567890
+Fixture outcomes include a reported failing test command and a sensitive file read.
+
+03 / INVESTIGATE SENSITIVE ACCESS
+$ secuarden events --sensitive --last 4
+2026-10-17T06:56:08.725774Z  file_read         .env.example [SENSITIVE]
+2026-10-17T06:56:08.987748Z  file_read         .env.example [SENSITIVE]
+  status: success
+The demo .env.example contains only a placeholder. No real secrets are used.
+
+04 / REVIEW THE SESSION
+$ secuarden report --since 24h --limit 2
+Secuarden accountability report
+───────────────────────────────
+Repository: acme/demo-repository
+Period: Last 24 hours · 16 Oct 17:56 – 17 Oct 17:56 AEDT
+
+Summary
+  1 session · 12 actions
+  1 repository file changed · 0 external files changed
+  0 commands succeeded · 1 failed · 0 unknown
+  1 sensitive-path access
+
+Agent activity
+  Claude Code · 1 session · 12 actions
+
+Files changed
+  src/auth/middleware.ts
+
+Files read
+  .env.example
+  src/auth/middleware.ts
+
+Sensitive-path access
+  [SENSITIVE] 17 Oct 17:56 AEDT · .env.example · session a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+Failed, blocked, and rejected actions
+  Failed command · npm test · exit 1
+
+MCP activity
+  docs/lookup · 1 call
+
+Developer footprint
+  developer@example.invalid · 12 actions
+
+Branch footprint
+  main · 12 actions
+Reported outcomes are evidence from hook payloads, not independently run tests.
+
+05 / CHECK THE STORED EVIDENCE
+$ secuarden verify
+✓ Audit trail verified · 12 events across 1 sessions
+Hash verification checks stored records; it does not prove complete capture.
