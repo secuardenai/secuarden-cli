@@ -51,9 +51,40 @@ that installs them; avoid using `go run` for setup or hook installation.
 
 ## Checking capture
 
-After setup, run a real agent session in the configured repository that reads a file, makes a small change, and runs a command. Then inspect `secuarden status` and `secuarden events --last 20`. Setup alone does not establish that hooks are delivering events.
+`init` arms a 15-minute live-verification window and returns with verification
+pending. This means hooks were configured, not that a client delivered evidence.
+Follow the [live-verification procedure](live-capture-verification.md): arm a
+fresh window, start a new conversation in the intended repository, perform a tool
+action, and check that conversation's exact session ID. Check the reported stage;
+a pending result can return exit status zero.
 
-If no events arrive, check the selected repository and capture scope, the installed binary path, agent hook configuration, and any required Codex trust approval. After moving the main capture binary, use `secuarden hooks refresh`. Re-generate independent observation hooks separately if their executable path changes.
+For VS Code, open the intended repository folder in the intended window. Save
+work and finish tasks before reloading that window if configuration may not have
+loaded. Review hook approvals if presented, then arm a fresh verification window.
+Do not use an unrelated desktop conversation or select a session solely because
+it is the newest in the database.
+
+Keep the configured executable at a persistent path. After moving or upgrading
+it, run `secuarden hooks refresh` with the intended installed binary. Refresh does
+not grant trust. Re-generate independent observation hooks separately if their
+executable path changes.
+
+### Interpreting status
+
+- **Verification pending:** no successful current verification has been established.
+- **Last verified:** persisted request/result evidence was observed for the named
+  session and repository. An idle client is not unhealthy merely because this
+  timestamp is old.
+- **Stale:** configuration, executable, or detectable runtime changes mean the
+  historical result no longer verifies the current setup. Arm and complete a new
+  check after activation and trust review as needed.
+- **Configured command missing / not executable:** repair the installed binary
+  path or permissions and refresh hooks before repeating live verification.
+
+If no events arrive, check repository scope, hook configuration, and client
+activation/trust. Scope-skip counters aggregate multiple sessions; they cannot
+identify which conversation was skipped. See the guide's
+[incomplete results](live-capture-verification.md#incomplete-results).
 
 
 ## Uninstall
