@@ -1,5 +1,9 @@
 # The governance flight recorder for AI-written code
 
+[![Tests](https://github.com/secuardenai/secuarden-cli/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/secuardenai/secuarden-cli/actions/workflows/test.yml?query=branch%3Amain)
+[![Latest release](https://img.shields.io/github/v/release/secuardenai/secuarden-cli)](https://github.com/secuardenai/secuarden-cli/releases/latest)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 Secuarden is a local-first CLI for developers, platform engineers, and security
 teams who need to investigate AI-assisted changes. It captures evidence from
 **Claude Code and compatible Codex runtimes**, so you can inspect agent activity,
