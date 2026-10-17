@@ -24,25 +24,26 @@ var statusCmd = &cobra.Command{
 }
 
 type statusView struct {
-	CaptureActive  bool
-	Agent          string
-	DatabasePath   string
-	DatabaseSize   int64
-	Sync           string
-	Developer      string
-	PrivacyMode    string
-	Summary        *storage.StatusSummary
-	CaptureScope   string
-	ApprovedRepos  []string
-	CurrentRepo    string
-	ClaudeHooks    bool
-	CodexHooks     bool
-	CodexState     string
-	CodexReason    string
-	LatestEvents   []storage.LatestAgentEvent
-	ReceiptOutcome string
-	ReceiptMode    string
-	ScopeSkips     map[string]int
+	CaptureActive    bool
+	Agent            string
+	DatabasePath     string
+	DatabaseSize     int64
+	Sync             string
+	Developer        string
+	PrivacyMode      string
+	Summary          *storage.StatusSummary
+	CaptureScope     string
+	ApprovedRepos    []string
+	CurrentRepo      string
+	ClaudeHooks      bool
+	CodexHooks       bool
+	CodexState       string
+	CodexReason      string
+	LatestEvents     []storage.LatestAgentEvent
+	ReceiptOutcome   string
+	ReceiptMode      string
+	LiveVerification string
+	ScopeSkips       map[string]int
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
@@ -137,7 +138,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		CaptureScope: cfg.CaptureScope, ApprovedRepos: cfg.ApprovedRepositories,
 		CurrentRepo: currentRepo, ClaudeHooks: activeClaude, CodexHooks: codexInstalled,
 		CodexState: string(codexStatus.State), CodexReason: codexStatus.Reason,
-		LatestEvents: latestEvents, ScopeSkips: scopeSkips,
+		LatestEvents: latestEvents, LiveVerification: lastLiveLabel(db, "claude-code", currentRepo) + "\n" + lastLiveLabel(db, "codex", currentRepo),
+		ScopeSkips:  scopeSkips,
 		ReceiptMode: receiptMode, ReceiptOutcome: receiptOutcome,
 	})
 }
@@ -162,6 +164,7 @@ func renderStatus(w io.Writer, view statusView) error {
 	}
 	rows := []statusTableRow{
 		{Label: "Capture:", Value: capture},
+		{Label: "Live verification:", Value: view.LiveVerification},
 		{Label: "Database:", Value: fmt.Sprintf("%s · %s", homeRelative(view.DatabasePath), formatBytes(view.DatabaseSize))},
 		{Label: "Sync:", Value: view.Sync},
 		{Label: "Capture scope:", Value: formatCaptureScope(view)},
@@ -313,7 +316,7 @@ func formatCaptureScope(view statusView) string {
 
 func installedLabel(installed bool) string {
 	if installed {
-		return "installed"
+		return "configured"
 	}
 	return "not installed"
 }

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/secuardenai/secuarden-cli/internal/agent"
 	"github.com/secuardenai/secuarden-cli/internal/config"
@@ -266,8 +267,15 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
-	fmt.Println("Secuarden is ready. After your next AI coding session, run:")
+	fmt.Println("Installation configured. Live capture verification is pending; this is not an installation failure.")
 	fmt.Println("  secuarden status")
+	for _, name := range []string{"claude-code", "codex"} {
+		if (name == "claude-code" && claudeInstalled) || (name == "codex" && codexInstalled) {
+			if err := runLive(cmd, setupRepository.Root, name, "unknown", "", time.Duration(0)); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
