@@ -686,12 +686,13 @@ func updateSessionHash(tx *sql.Tx, sessionID string) error {
 
 // IntegrityResult describes verification of the append-only event hash chains.
 type IntegrityResult struct {
-	Valid           bool     `json:"valid"`
-	EventsChecked   int      `json:"events_checked"`
-	SessionsChecked int      `json:"sessions_checked"`
-	LegacyEvents    int      `json:"legacy_events"`
-	LegacySessions  int      `json:"legacy_sessions"`
-	Failures        []string `json:"failures,omitempty"`
+	Valid           bool               `json:"valid"`
+	EventsChecked   int                `json:"events_checked"`
+	SessionsChecked int                `json:"sessions_checked"`
+	LegacyEvents    int                `json:"legacy_events"`
+	LegacySessions  int                `json:"legacy_sessions"`
+	Failures        []string           `json:"failures,omitempty"`
+	Findings        []IntegrityFinding `json:"findings,omitempty"`
 }
 
 type ProvenanceRecord struct {
@@ -743,6 +744,21 @@ func (d *DB) ListWriteProvenance(since time.Time) ([]ProvenanceRecord, error) {
 
 // VerifyIntegrity recomputes every session chain without reading source files.
 func (d *DB) VerifyIntegrity() (*IntegrityResult, error) {
+	return d.verifyIntegrity(nil, false)
+}
+
+// VerifyIntegrityForSessions verifies complete chains for an explicit selection.
+// An empty selection checks no records; it never falls back to all records.
+func (d *DB) VerifyIntegrityForSessions(ids []string) (*IntegrityResult, error) {
+	return d.verifyIntegrity(ids, true)
+}
+
+func (d *DB) verifyIntegrity(ids []string, restrict bool) (*IntegrityResult, error) {
+	encoded, err := json.Marshal(ids)
+	if err != nil {
+		return nil, err
+	}
+
 	rows, err := d.db.Query(`SELECT id, session_id, sequence, timestamp, COALESCE(schema_version, ''),
 		COALESCE(captured_at, ''), COALESCE(invocation_id, ''),
 		source, COALESCE(source_version, ''), agent_name,
@@ -758,7 +774,7 @@ func (d *DB) VerifyIntegrity() (*IntegrityResult, error) {
 		COALESCE(developer_email, ''), COALESCE(intent_summary, ''),
 		COALESCE(raw_event_hash, ''),
 		COALESCE(previous_event_hash, ''), COALESCE(event_hash, ''), COALESCE(repository_checkpoint, 'null'), COALESCE(collector_details, '')
-		FROM events ORDER BY session_id, sequence, id`)
+		FROM events WHERE (NOT ? OR session_id IN (SELECT value FROM json_each(?))) ORDER BY session_id, sequence, id`, restrict, string(encoded))
 	if err != nil {
 		return nil, err
 	}
@@ -798,6 +814,7 @@ func (d *DB) VerifyIntegrity() (*IntegrityResult, error) {
 			result.LegacyEvents++
 			result.Valid = false
 			result.Failures = append(result.Failures, "legacy:"+e.SessionID+":"+strconv.Itoa(e.Sequence))
+			result.addFinding(e.SessionID, e.Sequence, e.AgentName, "legacy_event")
 			// Old 64-character partial hashes and unhashed rows remain readable,
 			// but are explicitly legacy and are not claimed as fully verified.
 			// Carry the exact stored value because a later v2 event chained to it.
@@ -830,6 +847,15 @@ func (d *DB) VerifyIntegrity() (*IntegrityResult, error) {
 			(checkpoint != "null" && !strings.HasPrefix(storedHash, "v5:")) {
 			result.Valid = false
 			result.Failures = append(result.Failures, e.SessionID+":"+strconv.Itoa(e.Sequence))
+			if storedPrevious != expectedPrevious {
+				result.addFinding(e.SessionID, e.Sequence, e.AgentName, "broken_chain")
+			}
+			if storedHash != expectedHash {
+				result.addFinding(e.SessionID, e.Sequence, e.AgentName, "event_hash_mismatch")
+			}
+			if unboundCollector || unboundAffected || (checkpoint != "null" && !strings.HasPrefix(storedHash, "v5:")) {
+				result.addFinding(e.SessionID, e.Sequence, e.AgentName, "unprotected_metadata")
+			}
 		}
 		previous[e.SessionID] = storedHash
 	}
@@ -843,7 +869,7 @@ func (d *DB) VerifyIntegrity() (*IntegrityResult, error) {
 		COALESCE(os_user, ''), COALESCE(machine_id, ''),
 		COALESCE(working_directory, ''), COALESCE(git_repo_url, ''),
 		COALESCE(git_branch, ''), COALESCE(session_hash, '')
-		FROM sessions ORDER BY id`)
+		FROM sessions WHERE (NOT ? OR id IN (SELECT value FROM json_each(?))) ORDER BY id`, restrict, string(encoded))
 	if err != nil {
 		return nil, err
 	}
@@ -864,6 +890,7 @@ func (d *DB) VerifyIntegrity() (*IntegrityResult, error) {
 			result.LegacySessions++
 			result.Valid = false
 			result.Failures = append(result.Failures, "legacy-session:"+record.ID)
+			result.addFinding(record.ID, 0, record.AgentName, "legacy_session")
 			continue
 		}
 		expectedHash, err := computeSessionHash(record)
@@ -873,6 +900,7 @@ func (d *DB) VerifyIntegrity() (*IntegrityResult, error) {
 		if storedHash != expectedHash {
 			result.Valid = false
 			result.Failures = append(result.Failures, "session:"+record.ID)
+			result.addFinding(record.ID, 0, record.AgentName, "session_hash_mismatch")
 		}
 	}
 	return result, sessionRows.Err()
