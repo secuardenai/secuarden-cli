@@ -169,7 +169,9 @@ and network operations can add latency.
 ## Verify, export, and gate
 
 ```bash
-secuarden verify
+secuarden verify                       # current Git repository
+secuarden verify --repo /path/to/repo
+secuarden verify --all                 # entire local audit database
 secuarden bom --since 30d > secuarden-ai-bom.json
 secuarden gate --since 24h --fail-on high
 ```

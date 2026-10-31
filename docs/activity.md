@@ -56,8 +56,12 @@ cannot receive complete integrity coverage retroactively. Verification,
 AI-BOM export, and `secuarden gate` therefore fail closed.
 
 ```bash
-# Verify evidence before an audit or export
+# Verify evidence for the current Git repository
 secuarden verify
+secuarden verify --repo /path/to/repo
+secuarden verify --all
+secuarden verify --repo /path/to/repo --details
+secuarden verify --repo /path/to/repo --json
 
 # Produce a portable AI Bill of Materials
 secuarden bom --since 30d > secuarden-ai-bom.json
@@ -65,6 +69,34 @@ secuarden bom --since 30d > secuarden-ai-bom.json
 # GitHub Actions, GitLab CI, or any shell-based pipeline
 secuarden gate --since 24h --fail-on high
 ```
+
+`verify` defaults to the current Git repository. Outside a Git repository, supply
+`--repo <path>` or `--all`; these flags are mutually exclusive. `--repo` accepts a
+repository root or a path inside it. Matching uses the canonical Git remote
+identity, so other clones and worktrees with that remote are included. Repositories
+without a remote use their resolved local root. Verification selects sessions by
+stored repository evidence and checks each selected session's **complete chain**,
+including events whose working directories differ. It does not check current
+source files or prove live hook delivery. `bom` and `gate` retain their existing
+full-database integrity checks.
+
+The terminal output displays scope, storage location, checked counts, and at most
+ten affected sessions. Each row includes repository, agent, session ID,
+unique failed-event count, and failure categories. Session metadata failures can
+have zero failed events. Repository names and session IDs are shortened only when unambiguous.
+`--details` shows all rows, full identifiers, and individual findings;
+`--json` exports every finding without truncation. These output flags are mutually
+exclusive. Findings distinguish broken chain links, event/session hash mismatches,
+legacy coverage, and metadata not covered by the stored hash. A finding does not
+by itself establish deliberate tampering.
+
+Exit status is 0 for verified records and 1 for integrity failures, empty selections,
+or operational errors. An empty selection says **NO RECORDS**, never VERIFIED.
+JSON retains the existing integrity fields and adds `status` (`verified`, `failed`,
+`no_records`), `scope` (`repository`, `all`), canonical `repository`, `storage`, and
+structured `findings` (session ID, event sequence where applicable, agent, kind).
+Unlike previous versions, `--json` also exits unsuccessfully for invalid evidence.
+Scripts that previously checked the entire database must now use `--all`.
 
 Risk scoring is deliberately explainable and deterministic. It classifies paths
 associated with identity, payments, secrets, cryptography, infrastructure, and
