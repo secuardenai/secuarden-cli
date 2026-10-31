@@ -20,9 +20,9 @@ cd /path/to/your/repository
 secuarden init --repo .
 ```
 
-These instructions describe the source on `main`. Until the 1.0 release is
-published, the installer downloads the latest published release, which may not
-include every workflow below. To try this checkout, [build from source](#contributing).
+These workflows are included in **v0.6.0**. The installer downloads the latest
+published release. See the [v0.6.0 release notes](docs/releases/v0.6.0.md) for
+features and upgrade guidance, or [build from source](#contributing) to try `main`.
 
 Setup detects supported agents. Choose explicitly with `--agent claude-code` or
 `--agent codex`. Codex requires compatible hooks, configuration, and trust; follow
