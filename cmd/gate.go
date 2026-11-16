@@ -25,6 +25,8 @@ var gateCmd = &cobra.Command{
 		if !ok {
 			return fmt.Errorf("--fail-on must be low, medium, high, or critical")
 		}
+		cmd.SilenceUsage = true
+		cmd.SilenceErrors = true
 		path, err := storage.DefaultDBPath()
 		if err != nil {
 			return err

@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS events (
     duration_ms INTEGER,
     working_directory TEXT,
     git_branch TEXT,
+    git_repo_url TEXT,
     developer_email TEXT,
     intent_summary TEXT,
     raw_event_hash TEXT,

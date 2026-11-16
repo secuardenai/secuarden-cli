@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -749,4 +750,38 @@ func containsFailure(failures []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestSessionIdentityPreservesMissingGitFields(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "identity.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.EnsureSession("identity", "claude-code", "/repo"); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []SessionIdentity{
+		{GitBranch: "main", GitRepoURL: "https://example.invalid/repo.git", DeveloperName: "First"},
+		{DeveloperName: "Updated", DeveloperEmail: "updated@example.invalid"},
+	} {
+		if err := db.UpdateSessionIdentity("identity", id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	branch, remote, err := db.ReadSessionGitIdentity("identity")
+	if err != nil || branch != "main" || remote != "https://example.invalid/repo.git" {
+		t.Fatalf("%s %s %v", branch, remote, err)
+	}
+	var name, email string
+	if err := db.db.QueryRow("SELECT developer_name, developer_email FROM sessions WHERE id='identity'").Scan(&name, &email); err != nil {
+		t.Fatal(err)
+	}
+	if name != "Updated" || email != "updated@example.invalid" {
+		t.Fatalf("developer did not refresh: %s %s", name, email)
+	}
+	integrity, err := db.VerifyIntegrity()
+	if err != nil || !integrity.Valid {
+		t.Fatalf("integrity: %+v %v", integrity, err)
+	}
 }

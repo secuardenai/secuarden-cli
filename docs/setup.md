@@ -55,8 +55,12 @@ that installs them; avoid using `go run` for setup or hook installation.
 pending. This means hooks were configured, not that a client delivered evidence.
 Follow the [live-verification procedure](live-capture-verification.md): arm a
 fresh window, start a new conversation in the intended repository, perform a tool
-action, and check that conversation's exact session ID. Check the reported stage;
-a pending result can return exit status zero.
+action, and check that conversation's exact session ID. `verify-live` exits zero
+only after a persisted matching request and result; arming, pending/incomplete
+verification, and missing configuration return nonzero. Successful `init` can
+still return zero after installing hooks and arming the window. With an active
+local policy, use an allowed file-read tool instead of the blocked `pwd` shell
+probe.
 
 For VS Code, open the intended repository folder in the intended window. Save
 work and finish tasks before reloading that window if configuration may not have

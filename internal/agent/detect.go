@@ -13,11 +13,13 @@ type Detection struct {
 }
 
 // DetectClaudeCode detects either the shared Claude settings boundary or the
-// official VS Code extension. The extension bundles its own CLI, so a shell
+// official VS Code extension. An existing regular settings file (including {}
+// or an empty file) intentionally signals a shared configuration boundary, not
+// proof of an installed or running agent; live verification establishes delivery. The extension bundles its own CLI, so a shell
 // `claude` executable is intentionally not required here.
 func DetectClaudeCode() Detection {
 	if path := claudeSettingsPath(); path != "" {
-		if _, err := os.Stat(path); err == nil {
+		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
 			return Detection{Found: true, Source: "shared Claude settings", Path: path}
 		}
 	}

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -81,10 +82,13 @@ with hooks disabled, init asks once whether to enable them.
   secuarden init --repo .                  # local only
   secuarden init --repo . --api-key sec_xxxx # SaaS sync for this repository
   secuarden init --repo /path/to/repo --api-key sec_xxxx --api-url https://dev.example`,
+	Args: cobra.NoArgs,
 	RunE: runInit,
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
 	// Resolve the required repository before modifying agent or user settings.
 	if strings.TrimSpace(initRepo) == "" {
 		return fmt.Errorf("--repo PATH is required; use `secuarden init --repo .` to explicitly select the current repository")
@@ -108,6 +112,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	codexStatus := agent.InspectCodex()
 	codexDetected := codexStatus.State == agent.CodexHookEnabled
 	if requestedAgent != "auto" && requestedAgent != "claude-code" && requestedAgent != "codex" {
+		cmd.SilenceUsage = false
 		return fmt.Errorf("invalid --agent %q: choose auto, claude-code, or codex", initAgent)
 	}
 	if codexExtension.Found && !codexDetected {
@@ -138,7 +143,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	claudeInstalled := claudeDetected && (requestedAgent == "auto" || requestedAgent == "claude-code")
 	codexInstalled := codexDetected && (requestedAgent == "auto" || requestedAgent == "codex")
 	if requestedAgent == "claude-code" && !claudeDetected {
-		return fmt.Errorf("Claude Code was requested but no shared settings file or supported VS Code extension was detected; install the Claude Code VS Code extension and rerun init, or use --agent claude-code after confirming the extension is installed")
+		return fmt.Errorf("Claude Code was not detected; install the Claude Code CLI and launch it to create its shared settings, or install the Claude Code VS Code extension, then rerun init")
 	}
 	if initEnableCodexHooks && (requestedAgent == "codex" || requestedAgent == "auto") {
 		switch codexStatus.State {
@@ -180,10 +185,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 		cfg.CaptureScope = config.CaptureScopeAll
 	}
 	if cfg.CaptureScope != config.CaptureScopeAll && cfg.CaptureScope != config.CaptureScopeRepo && cfg.CaptureScope != config.CaptureScopeApproved {
+		cmd.SilenceUsage = false
 		return fmt.Errorf("invalid --scope %q: choose all, repo, or approved", initScope)
 	}
 	if initApproveRepo {
 		if cmd.Flags().Changed("scope") && cfg.CaptureScope != config.CaptureScopeApproved {
+			cmd.SilenceUsage = false
 			return fmt.Errorf("--add-approved-repo requires --scope approved when --scope is provided")
 		}
 		cfg.CaptureScope = config.CaptureScopeApproved
@@ -271,7 +278,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println("  secuarden status")
 	for _, name := range []string{"claude-code", "codex"} {
 		if (name == "claude-code" && claudeInstalled) || (name == "codex" && codexInstalled) {
-			if err := runLive(cmd, setupRepository.Root, name, "unknown", "", time.Duration(0)); err != nil {
+			if err := runLive(cmd, setupRepository.Root, name, "unknown", "", time.Duration(0)); err != nil && !errors.Is(err, errLiveArmed) {
 				return err
 			}
 		}

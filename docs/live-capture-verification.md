@@ -8,13 +8,13 @@
 secuarden verify-live --repo /absolute/path/to/repo --agent codex --client vscode
 ```
 
-Start a new conversation after arming, ask the agent to run `pwd`, then check its exact session ID:
+Start a new conversation after arming, ask the agent to run `pwd`, then check its exact session ID. If local policy enforcement is active, request an allowed file read instead: shell tools, including `pwd`, are blocked.
 
 ```sh
 secuarden verify-live --repo /absolute/path/to/repo --agent codex --client vscode --session EXACT_SESSION_ID --wait 60s
 ```
 
-`--wait` defaults to zero and is capped at five minutes. Cancellation is supported. Repeating the check within the window allows asynchronous hooks to finish. Arming again replaces the pending window, not the last successful result. Incomplete verification prints its stage and returns normally, because pending runtime verification is not an installation failure; invalid arguments, expired/stale windows, and storage errors return errors. Scripts must inspect the reported stage, not interpret exit zero as capture success.
+`--wait` defaults to zero and is capped at five minutes. Cancellation is supported. Repeating the check within the window allows asynchronous hooks to finish. Arming again replaces the pending window, not the last successful result. `verify-live` exits zero only after a persisted matching tool request and result. Arming a window, pending/incomplete verification, missing configuration, and errors return nonzero. Arming still saves the window; start a new conversation and rerun with its exact session ID. Successful `init` treats an armed window as successful installation, not verified capture.
 
 The selected session must have no events preceding the window. A persisted session-start event and pre/post events with the same invocation ID and tool, agent, session, and canonical repository establish a tool round-trip. Both current agent integrations support these phases. A post event means a result was received, not that the tool succeeded. Stop/session exit is unnecessary, including Codex's turn-boundary Stop. No command, prompt, or output text is required. Verification never invokes hooks, generates synthetic capture events, changes scope/privacy, or enables cloud sync.
 

@@ -156,7 +156,7 @@ func (d *DB) QueryEvents(filter EventFilter) ([]StoredEvent, error) {
 		       COALESCE(developer_email, ''), COALESCE(raw_event_hash, ''), COALESCE(repository_checkpoint, 'null'), COALESCE(intent_summary, '')
 		FROM (
 			SELECT events.*,
-			       COALESCE(events.working_directory,
+			       COALESCE(NULLIF(events.working_directory, ''),
 			           (SELECT sessions.working_directory FROM sessions WHERE sessions.id = events.session_id),
 			           '') AS report_working_directory
 			FROM events WHERE ` + strings.Join(where, " AND ") + `

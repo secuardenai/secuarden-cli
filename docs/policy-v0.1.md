@@ -1,4 +1,4 @@
-    # Local decorator enforcement v0.1
+# Local decorator enforcement v0.1
 
 Import a JSON policy to activate protection on the next synchronous pre-tool
 hook. No SaaS connection or daemon restart is needed. Policies are user-wide,

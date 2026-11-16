@@ -63,6 +63,8 @@ func Open(path string) (*DB, error) {
 	}
 	// Additive migrations for databases created by earlier CLI releases.
 	for _, migration := range []string{
+		// Per-event remote is supplemental metadata; existing hash formats remain unchanged.
+		"ALTER TABLE events ADD COLUMN git_repo_url TEXT",
 		"ALTER TABLE events ADD COLUMN previous_event_hash TEXT",
 		"ALTER TABLE events ADD COLUMN event_hash TEXT",
 		"ALTER TABLE sessions ADD COLUMN session_hash TEXT",
@@ -305,7 +307,14 @@ type SessionIdentity struct {
 	GitRepoURL     string
 }
 
+// ReadSessionGitIdentity returns the last known Git identity without rescanning a repository.
+func (d *DB) ReadSessionGitIdentity(sessionID string) (branch, remote string, err error) {
+	err = d.db.QueryRow(`SELECT COALESCE(git_branch, ''), COALESCE(git_repo_url, '') FROM sessions WHERE id=?`, sessionID).Scan(&branch, &remote)
+	return
+}
+
 // UpdateSessionIdentity writes developer and git identity fields for a session.
+// Empty Git values preserve the last known identity.
 // Uses a fully static SQL statement — no column name is ever interpolated.
 func (d *DB) UpdateSessionIdentity(sessionID string, id SessionIdentity) error {
 	tx, err := d.db.Begin()
@@ -319,8 +328,8 @@ func (d *DB) UpdateSessionIdentity(sessionID string, id SessionIdentity) error {
 			developer_email = ?,
 			os_user         = ?,
 			machine_id      = ?,
-			git_branch      = ?,
-			git_repo_url    = ?
+			git_branch      = COALESCE(?, git_branch),
+			git_repo_url    = COALESCE(?, git_repo_url)
 		WHERE id = ?`,
 		nullStr(id.DeveloperName), nullStr(id.DeveloperEmail),
 		nullStr(id.OSUser), nullStr(id.MachineID),
@@ -484,9 +493,9 @@ func (d *DB) WriteEvent(e *events.Event) error {
 	if err != nil {
 		return eventWriteError("insert event", err)
 	}
-	if _, err := conn.ExecContext(ctx, `UPDATE events SET repository_checkpoint=?, schema_version=?, captured_at=?, invocation_id=?, agent_version=?, model=?, provider=?,
+	if _, err := conn.ExecContext(ctx, `UPDATE events SET git_repo_url=?, repository_checkpoint=?, schema_version=?, captured_at=?, invocation_id=?, agent_version=?, model=?, provider=?,
 		outcome=?, permission_status=?, execution_status=?, privacy_mode=?, completeness_state=?, completeness_reasons=? WHERE id=?`,
-		string(checkpointJSON), nullStr(storedSchemaVersion), nullStr(e.CapturedAt), nullStr(e.InvocationID), nullStr(e.AgentVersion), nullStr(e.Model), nullStr(e.Provider),
+		nullStr(e.GitRepoURL), string(checkpointJSON), nullStr(storedSchemaVersion), nullStr(e.CapturedAt), nullStr(e.InvocationID), nullStr(e.AgentVersion), nullStr(e.Model), nullStr(e.Provider),
 		nullStr(e.Outcome), nullStr(e.PermissionStatus), nullStr(e.ExecutionStatus), nullStr(e.PrivacyMode),
 		nullStr(e.Completeness.State), string(completenessJSON), e.ID); err != nil {
 		return eventWriteError("store Stage 1 evidence fields", err)
@@ -1121,7 +1130,7 @@ func (d *DB) ReadSessionEnvelope(sessionID string) (*SessionEnvelope, error) {
 		COALESCE(privacy_mode,''), COALESCE(completeness_state,''), COALESCE(completeness_reasons,'[]'), is_sensitive, COALESCE(redacted_fields,'[]'),
 		COALESCE(file_path,''), COALESCE(affected_files,'null'), COALESCE(content_hash,''), COALESCE(diff_stats,''), COALESCE(command,''), exit_code, COALESCE(command_output_preview,''),
 		COALESCE(mcp_server,''), COALESCE(mcp_tool,''), duration_ms, COALESCE(working_directory,''), COALESCE(git_branch,''), COALESCE(developer_email,''),
-		COALESCE(intent_summary,''), COALESCE(raw_event_hash,''), COALESCE(previous_event_hash,''), COALESCE(event_hash,''), COALESCE(repository_checkpoint,'null')
+		COALESCE(intent_summary,''), COALESCE(raw_event_hash,''), COALESCE(previous_event_hash,''), COALESCE(event_hash,''), COALESCE(repository_checkpoint,'null'), COALESCE(git_repo_url,'')
 		FROM events WHERE session_id=? ORDER BY sequence`, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("read session events: %w", err)
@@ -1135,7 +1144,7 @@ func (d *DB) ReadSessionEnvelope(sessionID string) (*SessionEnvelope, error) {
 			&e.Source, &e.SourceVersion, &e.AgentName, &e.AgentVersion, &e.Model, &e.Provider, &e.HookPhase, &e.ActionType, &e.ToolName,
 			&e.ResultStatus, &e.Outcome, &e.PermissionStatus, &e.ExecutionStatus, &e.PrivacyMode, &e.Completeness.State, &reasons, &sensitive, &redacted,
 			&e.FilePath, &affectedFiles, &e.ContentHash, &e.DiffStats, &e.Command, &e.ExitCode, &e.CommandOutputPreview, &e.MCPServer, &e.MCPTool, &e.DurationMS,
-			&e.WorkingDirectory, &e.GitBranch, &e.DeveloperEmail, &e.IntentSummary, &e.RawEventHash, &e.PreviousEventHash, &e.EventHash, &checkpoint); err != nil {
+			&e.WorkingDirectory, &e.GitBranch, &e.DeveloperEmail, &e.IntentSummary, &e.RawEventHash, &e.PreviousEventHash, &e.EventHash, &checkpoint, &e.GitRepoURL); err != nil {
 			return nil, err
 		}
 		if e.SchemaVersion == "" {
