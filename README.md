@@ -9,6 +9,11 @@ teams who need to investigate AI-assisted changes. It captures evidence from
 **Claude Code and compatible Codex runtimes**, so you can inspect agent activity,
 verify stored records, and connect observations to committed changes.
 
+This branch also includes opt-in [local policy enforcement v0.1](docs/policy-v0.1.md):
+import a JSON policy to protect Python/Flask route security decorators before
+supported agent edits execute. The guide includes a Codex end-to-end demo,
+runtime requirements, and the initial tool restrictions.
+
 ## Install and try it
 
 You need Git, a local Git repository, and an installed, authenticated supported

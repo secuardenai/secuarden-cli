@@ -2,6 +2,7 @@ package capture
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -16,6 +17,7 @@ import (
 	"github.com/secuardenai/secuarden-cli/internal/config"
 	"github.com/secuardenai/secuarden-cli/internal/events"
 	"github.com/secuardenai/secuarden-cli/internal/identity"
+	"github.com/secuardenai/secuarden-cli/internal/policy"
 	"github.com/secuardenai/secuarden-cli/internal/privacy"
 	"github.com/secuardenai/secuarden-cli/internal/scope"
 	"github.com/secuardenai/secuarden-cli/internal/storage"
@@ -90,6 +92,17 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 	}
 	// 1. Read one extra byte so oversized input is rejected, not silently truncated.
 	data, err := io.ReadAll(io.LimitReader(os.Stdin, maxStdinBytes+1))
+	// Enforcement precedes parsing, capture scope, and storage. Passive capture
+	// errors must never turn an active policy denial into permission to execute.
+	if phase == "pre-tool-use" || phase == "permission-request" {
+		enforcementData := data
+		if err != nil {
+			enforcementData = nil
+		}
+		if reason := policy.Evaluate(enforcementData); reason != "" {
+			return writePolicyDenial(os.Stdout, phase, reason)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("read stdin: %w", err)
 	}
@@ -369,6 +382,14 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 	}
 
 	return nil
+}
+
+func writePolicyDenial(w io.Writer, phase, reason string) error {
+	output := map[string]any{"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": reason}
+	if phase == "permission-request" {
+		output = map[string]any{"hookEventName": "PermissionRequest", "decision": map[string]string{"behavior": "deny", "message": reason}}
+	}
+	return json.NewEncoder(w).Encode(map[string]any{"hookSpecificOutput": output})
 }
 
 func recordScopeSkip(reason string) error {
