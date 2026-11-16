@@ -154,13 +154,24 @@ func TestReportPathEvidenceFallsBackToSessionWorkingDirectory(t *testing.T) {
 		ActionType: "file_write", FilePath: "src/file.go", Outcome: "success", ExecutionStatus: "completed",
 	})
 	since := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC)
-	report, err := db.GetAccountabilityReportForSessions(since, since.Add(24*time.Hour), []string{"relative-session"}, true)
-	if err != nil {
-		t.Fatal(err)
+	for _, storedCWD := range []interface{}{nil, "", "/event/repo"} {
+		// Exercise both historical empty strings and the current NULL encoding.
+		if _, err := db.db.Exec("UPDATE events SET working_directory=? WHERE id='relative-event'", storedCWD); err != nil {
+			t.Fatal(err)
+		}
+		report, err := db.GetAccountabilityReportForSessions(since, since.Add(24*time.Hour), []string{"relative-session"}, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "/repo/nested"
+		if storedCWD == "/event/repo" {
+			want = "/event/repo"
+		}
+		if len(report.PathEvidence) != 1 || report.PathEvidence[0].WorkingDirectory != want {
+			t.Fatalf("cwd %v: expected %s, got %#v", storedCWD, want, report.PathEvidence)
+		}
 	}
-	if len(report.PathEvidence) != 1 || report.PathEvidence[0].WorkingDirectory != "/repo/nested" {
-		t.Fatalf("session working-directory fallback missing: %#v", report.PathEvidence)
-	}
+
 }
 
 func TestOpenExistingSchemaDatabase(t *testing.T) {

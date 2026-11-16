@@ -27,6 +27,8 @@ func init() {
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
 	cfg, err := config.Load()
 	if err != nil {
 		return err

@@ -1,0 +1,19 @@
+{
+  "version": "0.1",
+  "policies": [
+    {
+      "id": "protect-flask-route-security",
+      "kind": "protect_route_security_decorators",
+      "language": "python",
+      "security_decorators": [
+        "login_required",
+        "fresh_login_required",
+        "roles_required",
+        "roles_accepted",
+        "jwt_required",
+        "auth_required"
+      ],
+      "route_decorators": ["route", "get", "post", "put", "patch", "delete", "options", "head"]
+    }
+  ]
+}

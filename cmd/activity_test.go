@@ -568,3 +568,32 @@ func TestDisabledCodexIsNotReportedActive(t *testing.T) {
 		t.Fatalf("misleading status: %s", out.String())
 	}
 }
+
+func TestReportRelativePathsRespectContainmentThroughAlias(t *testing.T) {
+	root := t.TempDir()
+	alias := filepath.Join(t.TempDir(), "repo-alias")
+	if err := os.Symlink(root, alias); err != nil {
+		t.Fatal(err)
+	}
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := repository.Identity{Canonical: "example.invalid/acme/repo", Remote: "https://example.invalid/acme/repo.git", Root: canonicalRoot, RootValid: true}
+	for _, tc := range []struct {
+		path, cwd string
+		external  bool
+	}{
+		{"src/auth/middleware.ts", alias, false},
+		{".env.example", alias, false},
+		{"../outside.go", alias, true},
+		{"src/auth/middleware.ts", "", true},
+		{"src/auth/middleware.ts", "relative/directory", true},
+	} {
+		report := &storage.AccountabilityReport{PathEvidence: []storage.ReportPathEvidence{{FilePath: tc.path, WorkingDirectory: tc.cwd, Kind: "changed"}}}
+		decorateReportPaths(report, repo, "", false, false)
+		if len(report.FileEntries) != 1 || report.FileEntries[0].External != tc.external {
+			t.Fatalf("%+v: %+v", tc, report.FileEntries)
+		}
+	}
+}

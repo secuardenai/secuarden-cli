@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -51,14 +52,14 @@ func TestLiveCommandPendingTimeoutScopeAndStale(t *testing.T) {
 		return runLive(c, dir, "claude-code", "vscode", session, wait)
 	}
 	before := time.Now()
-	if err := run("", 0); err != nil {
+	if err := run("", 0); !errors.Is(err, errLiveArmed) {
 		t.Fatal(err)
 	}
 	if time.Since(before) > time.Second || !strings.Contains(out.String(), "verification pending") {
 		t.Fatal(out.String())
 	}
-	if err := run("fresh", time.Millisecond); err != nil {
-		t.Fatal(err)
+	if err := run("fresh", time.Millisecond); err == nil {
+		t.Fatal("pending verification succeeded")
 	}
 	if !strings.Contains(out.String(), "no_matching_event") {
 		t.Fatal(out.String())
@@ -84,7 +85,7 @@ func TestLiveCommandPendingTimeoutScopeAndStale(t *testing.T) {
 	if err := run("fresh", 0); err == nil || !strings.Contains(err.Error(), "expired") {
 		t.Fatal(err)
 	}
-	if err := run("", 0); err != nil {
+	if err := run("", 0); !errors.Is(err, errLiveArmed) {
 		t.Fatal(err)
 	}
 	fp, _ := agent.HookFingerprint("claude-code")
@@ -117,7 +118,7 @@ func TestLiveCommandPendingTimeoutScopeAndStale(t *testing.T) {
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
-	if err := run("", 0); err != nil {
+	if err := run("", 0); err == nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "excluded by capture scope") {
@@ -187,7 +188,7 @@ esac
 		command.Dir = repo
 		command.Stdin = strings.NewReader("")
 		output, err := command.CombinedOutput()
-		if err != nil {
+		if (args[0] == "verify-live") != (err != nil) {
 			t.Fatalf("%v: %v\n%s", args, err, output)
 		}
 		return string(output)

@@ -2,6 +2,7 @@ package capture
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -16,6 +17,7 @@ import (
 	"github.com/secuardenai/secuarden-cli/internal/config"
 	"github.com/secuardenai/secuarden-cli/internal/events"
 	"github.com/secuardenai/secuarden-cli/internal/identity"
+	"github.com/secuardenai/secuarden-cli/internal/policy"
 	"github.com/secuardenai/secuarden-cli/internal/privacy"
 	"github.com/secuardenai/secuarden-cli/internal/scope"
 	"github.com/secuardenai/secuarden-cli/internal/storage"
@@ -90,6 +92,17 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 	}
 	// 1. Read one extra byte so oversized input is rejected, not silently truncated.
 	data, err := io.ReadAll(io.LimitReader(os.Stdin, maxStdinBytes+1))
+	// Enforcement precedes parsing, capture scope, and storage. Passive capture
+	// errors must never turn an active policy denial into permission to execute.
+	if phase == "pre-tool-use" || phase == "permission-request" {
+		enforcementData := data
+		if err != nil {
+			enforcementData = nil
+		}
+		if reason := policy.Evaluate(enforcementData); reason != "" {
+			return writePolicyDenial(os.Stdout, phase, reason)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("read stdin: %w", err)
 	}
@@ -236,7 +249,8 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 	if cwd != "" {
 		dev = identity.CaptureWithDir(cwd)
 	} else {
-		dev = identity.Capture()
+		captured := *identity.Capture()
+		dev = &captured
 	}
 
 	// 10. Open database
@@ -260,19 +274,36 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 		logError(fmt.Errorf("ensure session (non-fatal on session-end): %w", err))
 	}
 
+	// Missing Git fields must not erase previously captured context. Copy cached
+	// developer identity above so this session's fallback never leaks into another.
+	if dev != nil && (dev.GitBranch == "" || dev.GitRepo == "") {
+		branch, remote, err := db.ReadSessionGitIdentity(sessionID)
+		if err != nil {
+			return fmt.Errorf("read session Git identity: %w", err)
+		}
+		if dev.GitBranch == "" {
+			dev.GitBranch = branch
+		}
+		if dev.GitRepo == "" {
+			dev.GitRepo = remote
+		}
+	}
+
 	// Update session with identity info if we have it.
 	// Scrub credentials from git remote URLs before storage — HTTP remotes can
 	// contain embedded tokens (https://user:token@host/...).
 	if dev != nil {
 		gitRepoURL, _ := privacy.Redact(dev.GitRepo)
-		_ = db.UpdateSessionIdentity(sessionID, storage.SessionIdentity{
+		if err := db.UpdateSessionIdentity(sessionID, storage.SessionIdentity{
 			DeveloperName:  dev.Name,
 			DeveloperEmail: dev.Email,
 			OSUser:         dev.OSUser,
 			MachineID:      dev.MachineID,
 			GitBranch:      dev.GitBranch,
 			GitRepoURL:     gitRepoURL,
-		})
+		}); err != nil {
+			return fmt.Errorf("update session identity: %w", err)
+		}
 	}
 
 	// 12. Insert event. Storage allocates its per-session sequence atomically
@@ -369,6 +400,14 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 	}
 
 	return nil
+}
+
+func writePolicyDenial(w io.Writer, phase, reason string) error {
+	output := map[string]any{"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": reason}
+	if phase == "permission-request" {
+		output = map[string]any{"hookEventName": "PermissionRequest", "decision": map[string]string{"behavior": "deny", "message": reason}}
+	}
+	return json.NewEncoder(w).Encode(map[string]any{"hookSpecificOutput": output})
 }
 
 func recordScopeSkip(reason string) error {

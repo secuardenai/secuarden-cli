@@ -319,8 +319,9 @@ func FormatPath(stored string, repo Identity, home string, absolute, prefixRepos
 	if repo.RootValid && repo.Root != "" {
 		roots = appendUnique(roots, repo.Root)
 	}
+	comparisonPath := resolvePathAliases(clean)
 	for _, root := range roots {
-		if rel, err := filepath.Rel(filepath.Clean(root), clean); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		if rel, err := filepath.Rel(resolvePathAliases(root), comparisonPath); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			inside, relative = true, rel
 			break
 		}
@@ -344,4 +345,19 @@ func FormatPath(stored string, repo Identity, home string, absolute, prefixRepos
 		}
 	}
 	return result
+}
+
+// resolvePathAliases canonicalizes the existing ancestor of a captured path.
+// The leaf may have been deleted or may only exist in a synthetic receipt.
+// This is presentation-only: stored paths and integrity inputs are untouched.
+func resolvePathAliases(path string) string {
+	path = filepath.Clean(path)
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	parent := filepath.Dir(path)
+	if parent == path {
+		return path
+	}
+	return filepath.Join(resolvePathAliases(parent), filepath.Base(path))
 }

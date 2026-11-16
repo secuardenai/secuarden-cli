@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 	"github.com/secuardenai/secuarden-cli/internal/storage"
 	"github.com/spf13/cobra"
 )
+
+var errLiveArmed = errors.New("live verification pending: window armed; a persisted matching tool request and result is required")
 
 const liveGuidance = "Hook trust and client activation are not verified. If configuration may not have loaded: save work and finish active tasks, reload/restart the relevant client, start a new conversation in the intended repository, review hook approval prompts if presented, then repeat verification. Stale configuration is only a possible cause."
 
@@ -57,6 +60,8 @@ func runLive(cmd *cobra.Command, repo, name, client, session string, wait time.D
 	if wait < 0 || wait > 5*time.Minute {
 		return fmt.Errorf("--wait must be between 0 and 5m")
 	}
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
 	r, err := repository.ResolveCurrent(repo)
 	if err != nil {
 		return err
@@ -67,12 +72,12 @@ func runLive(cmd *cobra.Command, repo, name, client, session string, wait time.D
 	}
 	if decision := scope.Evaluate(cfg, r.Root); !decision.Allowed {
 		fmt.Fprintf(cmd.OutOrStdout(), "Live verification pending: action excluded by capture scope (%s). Scope has not been changed.\n", decision.Reason)
-		return nil
+		return fmt.Errorf("live verification pending: capture scope excludes repository (%s)", decision.Reason)
 	}
 	fp, runtime, err := liveConfiguration(name)
 	if err != nil {
 		fmt.Fprintf(cmd.OutOrStdout(), "Live verification pending: %v\n%s\n", err, liveGuidance)
-		return nil
+		return fmt.Errorf("live verification unavailable: %w", err)
 	}
 	path, err := storage.DefaultDBPath()
 	if err != nil {
@@ -94,7 +99,7 @@ func runLive(cmd *cobra.Command, repo, name, client, session string, wait time.D
 			return err
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "Hooks configured; live verification pending (15-minute window).\nStart a NEW conversation in %s using the intended %s client. Ask the agent to run the harmless command `pwd`. Obtain that conversation's exact session/thread ID from the client or its local session record; do not select an unrelated session from recent activity.\nThen run:\n  secuarden verify-live --repo %q --agent %s --client %s --session <exact-session-id> --wait 60s\nClient surface is user-declared and cannot be independently verified. No prompt/command text is needed.\n%s\n", r.Root, client, r.Root, name, client, liveGuidance)
-		return nil
+		return errLiveArmed
 	}
 	var s live.State
 	found, err := db.ReadLiveState(key+"_pending", &s)
@@ -153,7 +158,7 @@ func runLive(cmd *cobra.Command, repo, name, client, session string, wait time.D
 		}
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Live verification incomplete: %s.\n%s\nFailures before storage opens cannot be attributed from persisted evidence; inspect local hook error logs if needed.\n", s.Stage, liveGuidance)
-	return nil
+	return fmt.Errorf("live verification incomplete: %s", s.Stage)
 }
 
 func lastLiveLabel(db *storage.DB, name, repo string) (label string) {

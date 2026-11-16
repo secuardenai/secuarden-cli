@@ -34,6 +34,8 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	if err := validateLoopbackAddress(serveAddress); err != nil {
 		return err
 	}
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
 	dbPath := serveDatabase
 	if dbPath == "" {
 		var err error
