@@ -1,25 +1,61 @@
-# Capture configuration attestation
+# Embedded capture contracts
 
-Configuration attestation records what Secuarden observes about its capture
-configuration. It is independent of policy evaluation and never denies agent
-operations. New `secuarden init` setups enable it by default; existing explicit
-disables survive subsequent setup. Existing installations can opt in:
+Secuarden ships a versioned minimum capture contract for each supported adapter
+inside the CLI binary. The installer and attestation checker use the same
+`internal/capturecontract` definitions. A machine's existing configuration does
+not define compliance, and a developer cannot accept broken hooks as a new gold
+state.
 
 ```sh
+secuarden attestation contracts
 secuarden attestation enable --agent claude-code,codex
 secuarden attestation watch
 ```
 
-Select only agents you have configured. Omit `--agent` to select installed agents
-on the first enable. Enabling again retains the original baseline and agents.
+Select agents you have configured. On first enable, omitting `--agent` selects
+installed integrations. Enabling again retains existing adapters; explicitly
+selecting additional adapters adds coverage and records the transition. It does
+not silently remove an existing adapter because its hooks have disappeared.
 
-`watch` is a foreground monitor independent of agent hooks. It polls every 15
-seconds, even if the hooks are removed. Run it under your process supervisor for
-continuous observation. This release does not install an OS background service.
-Without a running watcher, observations occur when you explicitly check or run
-`status`, `report`, `session`, `chain`, `bom`, `verify`, or `gate`. The dashboard
-reads the latest stored observation without changing it; an explicitly selected
-alternate activity database does not inherit this machine's attestation.
+New `secuarden init` setups enable attestation by default. Subsequent setup
+preserves an explicit disable. `--attestation=false` disables checks. Installation
+is checked against the embedded contract, rather than captured as an acceptable
+snapshot. Failed initial checks remain recorded and monitoring stays enabled so
+restoration can be observed.
+
+## Contract requirements
+
+Both adapters require SessionStart, UserPromptSubmit, PreToolUse, PostToolUse and
+SessionEnd capture. Codex also requires PermissionRequest and Stop. For each event:
+
+- Exactly one Secuarden command handler must be configured.
+- Its handler and arguments must match the embedded definition. Extra arguments,
+  shell wrappers, redirection and unsupported command syntax are rejected.
+- Its matcher must cover all required events (omitted, empty or `*`), and neither
+  hook nor matcher group may explicitly disable capture.
+- Its explicit timeout must meet the supported minimum in the contract (5 seconds
+  for most hooks; 10 for SessionEnd and Codex Stop). These are supported configuration
+  bounds, not a guarantee that every invocation completes within that time.
+- PreToolUse, SessionEnd and Codex PermissionRequest must be synchronous. Other
+  handlers may be synchronous or asynchronous.
+- Its executable must be runnable and have the same bytes as the observing CLI
+  build. A different path to identical bytes is acceptable. Refresh hooks after
+  upgrading if they still point to an older build.
+
+Global hook disabling must be off. Codex must enable a supported hooks feature,
+and none of the installed Secuarden hook-state entries may be disabled.
+
+Formatting, descriptions, unrelated hooks/settings, longer supported timeouts,
+privacy preferences, cloud sync settings and unrelated project trust changes do
+not alter compliance. Settings are inspected without invoking configured commands.
+Raw settings, credentials, executable contents and source code are not stored.
+
+The contract covers **shared user-level adapter hook configuration**. It does not
+certify project/managed overrides, runtime trust approval, effective activation,
+repository capture scope, storage health, or delivery. `verify-live` remains the
+separate delivery check. Those exclusions are explicit limits, not passing checks.
+
+## Observation and reporting
 
 ```sh
 secuarden attestation status
@@ -28,91 +64,71 @@ secuarden attestation history --json
 secuarden attestation verify
 secuarden attestation disable
 secuarden attestation enable
-secuarden init --repo . --attestation=false
 ```
 
-`check` returns nonzero for disabled, unconfigured, deviated, or unknown state.
-`verify` checks stored history checksums; it does not require current configuration
-to match. A disabled configuration can have a valid history. Disabling records a
-permanent transition and stops configuration observation. Re-enabling compares
-against the existing baseline, never silently accepts the current configuration,
-and retains the disabled interval. Reports remain available while disabled.
+`watch` is a foreground monitor independent of hooks. It polls every 15 seconds;
+run it under your process supervisor for continuous observation. No OS background
+service is installed automatically. Without a watcher, reporting commands and
+explicit checks take point-in-time observations. The dashboard reads stored state;
+an explicitly selected alternate evidence database does not inherit this machine's
+attestation.
 
-## What is observed
+Current states are `satisfied`, `violated`, `unknown`, `disabled`, or
+`not_configured`. Checks and enable commands return nonzero unless requirements
+are satisfied, while retaining the evaluation. Enabling is not permission to
+accept the current configuration. Missing required hooks fail; malformed or
+uninspectable configuration yields unknown results.
 
-The adapter observes user-level Claude Code and Codex hook definitions, required
-capture events, matchers, hook command/arguments and execution settings, global
-hook disabling, and configured Secuarden executable bytes. For Codex it also
-observes the supported hook feature flags, per-hook enablement and project-trust
-settings parsed by the existing adapter. Secuarden capture scope and privacy mode
-are included. Configuration values and executable contents are stored as hashes;
-credentials, raw commands and source code are not copied into this history.
+Records identify the adapter, contract version and digest, plus requirement IDs,
+pass/fail/unknown results, and reasons. Deviations and restorations remain in the
+append-only hash chain in `~/.secuarden/attestation.db`. Restoration starts at its
+observation time and never repairs earlier uncertainty. Gaps over 90 seconds and
+backward clock changes are recorded on the next enabled observation.
 
-JSON formatting and unrelated settings or unrelated hook additions do not change
-the snapshot. Changes to the order of Secuarden hooks can change behavior and are
-retained. New required integration settings should be added in the adapter.
+Reports retain all historical transitions, including deviations after restoration.
+The history is OS-user-wide and all-time; it does not assert that a particular
+commit or session was affected. Unchanged checks remain stored but are omitted
+from displayed transition history. The optional chain seal includes the contract
+history and head hash. Ordinary session sync does not upload this history.
 
-Project-specific/managed overrides, runtime hook trust approval, runtime activation,
-policy contents, and delivery of events are not certified by this snapshot. Keep
-using `verify-live` for delivery checks. Missing files/hooks produce deviations;
-unreadable or malformed inputs produce unknown observations.
+Disabling records a transition and stops configuration observations, without
+changing the embedded contracts or deleting history. `verify` checks stored
+checksums, not current compliance. A disabled or violated installation can have
+an intact history. The existing risk gate displays attestation without imposing
+an additional blocking policy.
 
-## History and restoration
+## Upgrades and existing history
 
-`~/.secuarden/attestation.db` contains a separate append-only SQLite event chain.
-Its state includes a baseline digest, configuration status, last observed time,
-last matching observation, and changed component labels. Each record covers the
-previous record's hash. Operations verify existing checksums before appending,
-and serialize concurrent processes with a database transaction.
+`attestation baseline` no longer accepts snapshots; it returns an explanatory
+error, including for old invocations with `--reason`. Requirements change only
+through an updated embedded contract, not a configuration file or CLI override.
+Contract changes must increment the adapter contract version. The digest also
+captures the definition, so a definition change is visible even if a version was
+accidentally reused.
 
-A missing hook creates a deviation. A later matching snapshot creates a
-restoration. Restoration only establishes the observed configuration at that
-new timestamp; it never repairs earlier coverage or certifies tool delivery.
-The previous observation timestamp bounds uncertainty about when a change began.
-Intervals longer than 90 seconds between observations, including monitor downtime,
-are recorded as observation gaps on the next enabled check. Backward clock changes
-also produce gaps. These are local wall-clock observations, not trusted timestamps.
+The next enabled check records `contract_changed` before evaluating a new
+contract. Old records retain their original contract identity and results.
 
-Reports show the current state and the full transition history, including earlier
-deviations after restoration. This history is explicitly OS-user-wide and all-time,
-not a claim that a particular repository, session, or commit was affected. Normal
-unchanged checks stay in storage but are omitted from the displayed transition
-history. The chain report includes this history and its latest hash in the optional
-SaaS seal payload; ordinary session sync does not upload it.
+Existing snapshot-based history is not rewritten or rehashed. Until evaluated
+against a contract, enabled legacy history reports `legacy_unverified`. The first
+enabled check appends `contract_migrated` and the actual compliance result, retaining
+all previous baselines, deviations and checksums. Disabled legacy installations
+remain disabled until explicitly enabled.
 
-For an intentional binary upgrade, capture-scope change, or agent addition:
+## Limits and module boundaries
 
-```sh
-secuarden attestation baseline --agent claude-code,codex --reason 'Approved capture upgrade'
-```
+Polling can miss a disable-and-restore between observations. A machine owner can
+stop the monitor, replace the CLI, or rewrite local records and recompute checksums.
+The binary defines correctness within this local trust boundary; it is not an
+independent enforcement authority. An accepted SaaS seal strengthens the integrity
+claim for a submitted snapshot, not observations that never occurred.
 
-Baseline replacement is explicit, requires a reason and a valid snapshot, and
-retains earlier records. `init` and `hooks refresh` check before repairing existing
-configuration; neither silently replaces an established baseline.
-
-## Limits and configuration choice
-
-Attestation is configurable because local users need an explicit way to stop its
-observation and storage. Disabled is a visible state, not healthy configuration.
-A gate's existing risk decision is unchanged; it displays attestation without
-silently imposing a new coverage policy.
-
-Polling can miss a disable-and-restore between checks. A developer can also stop
-the monitor, delete this local database, change the clock, or rewrite records and
-recompute their hashes. Local history is a checksum, not tamper-proof evidence.
-An independently accepted SaaS seal strengthens the integrity claim for that
-submitted snapshot but cannot recover observations that never occurred.
-
-## Module boundaries
-
-- `internal/attestation/model.go`: snapshots, state, events and report contracts.
-- `internal/attestation/engine.go`: baseline, enable/disable, deviation, restoration
-  and observation-gap transitions using an injected observer.
+- `internal/capturecontract`: embedded, versioned adapter requirements.
+- `internal/agent/attestation.go`: observation and contract evaluation.
+- `internal/attestation/model.go`: versioned contract identities and result records;
+  legacy snapshot fields remain solely for checksum compatibility.
+- `internal/attestation/engine.go`: enable/disable, contract adoption, deviation,
+  restoration and gap transitions, using an injected observer.
 - `internal/attestation/store.go`: SQLite transactions and checksum validation.
-- `internal/attestation/report.go`: read/reconcile facade and reporting semantics.
-- `internal/agent/attestation.go`: semantic configuration observation, without
-  invoking agent executables or executing hooks.
-- `cmd/attestation.go`: lifecycle commands and independent foreground monitoring.
-
-This separation lets future monitors and adapters reuse the same history contract
-without coupling configuration attestation to the hook capture pipeline.
+- `internal/attestation/report.go`: current/historical reporting semantics.
+- `cmd/attestation.go`: commands and independent foreground monitoring.

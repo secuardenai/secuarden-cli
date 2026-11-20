@@ -15,40 +15,48 @@ they run. No policy is active until you import one.
 
 ## New in v0.7.0
 
-- Captured sessions keep their git branch and remote after later hook events
-  arrive without a working directory. What that means?
-    > A captured session is a record of an AI agent’s activity. Hook events are notifications the agent sends when something happens, such as reading or editing a file. Secuarden uses the event’s working directory to find the Git repository and record its:
-    >    - Branch: for example, feature/login
-    >    - Remote: for example, https://github.com/team/app.git
+Captured sessions keep their git branch and remote if later hook events do not include a working directory.
 
-    > Some later events don’t include a working directory. That missing information should not erase what Secuarden already knows.
-- `secuarden report` resolves relative paths using the event directory, falling
+    What does this mean?
+
+    A captured session is a record of an AI agent’s activity.
+    Hook events are notifications the agent sends when something happens, such as reading or editing a file. Secuarden uses the event’s working directory to find the Git repository and record its:
+       - Branch: for example, feature/login
+       - Remote: for example, https://github.com/team/app.git
+
+    If some following events don’t include a working directory, the goal is to ensure that the missing information should not erase what Secuarden already knows.
+
+`secuarden report` resolves relative paths using the event directory, falling
   back to the session directory when the event supplies none. Paths inside that
   repository count as repository files.
   Paths outside it, and paths with no absolute directory to resolve against,
   stay external.
-- `secuarden verify-live` exits 0 only after a persisted matching tool request
+
+`secuarden verify-live` exits 0 only after a persisted matching tool request
   and result. Arming a window, pending or incomplete verification, missing hook
   configuration, and errors exit non-zero. `init` itself still succeeds when it
   has installed hooks and armed the window.
-- Operational failures from `init`, `verify-live`, `gate`, `sync`, and `serve`
-  print the error without the command usage block. Unknown flags and unexpected
-  arguments still print usage.
-- Opt-in local policy enforcement v0.1 can protect configured Python route
-  security decorators. See [Local policy enforcement](#local-policy-enforcement).
 
-After v0.7.0 is published, upgrade from v0.6.0 with the installer. To install
-this checkout beforehand, use `make install VERSION=v0.7.0-dev`. Then run
-`secuarden hooks refresh` from the installed binary so existing hooks point at
-it. Re-run live verification after refreshing hooks. Stored v0.6.0 sessions are
-not rewritten. Identity retention applies to new hook events; the report can
-also classify existing paths correctly when their captured directory context
-is available. Previously lost Git identity is not reconstructed.
+Operational failures from `init`, `verify-live`, `gate`, `sync`, and `serve`
+print the error without the command usage block. Unknown flags and unexpected
+arguments still print usage.
+
+An `EXPERIMENTAL` Opt-in local policy enforcement v0.1 can protect configured Python route security decorators. See [Local policy enforcement](#local-policy-enforcement).
 
 ## Install and try it
 
-You need Git, a local Git repository, and a supported agent that is ready to
-run in that repository. Local capture does not require a [Secuarden AI](https://secuarden.ai) account.
+    1. After v0.7.0 is published, upgrade from v0.6.0 with the installer.
+    2. To install this checkout beforehand, use `make install VERSION=v0.7.0-dev` and run `secuarden hooks refresh` from the installed binary so existing hooks point at
+    it.
+    3. Re-run live verification after refreshing hooks.
+
+    Stored v0.6.0 sessions are not rewritten. Identity retention applies to new hook events; the report can also classify existing paths correctly when their captured directory context is available. Previously lost Git identity is not reconstructed.
+
+### For a fresh install
+You need `Git`, a local Git repository, and a supported coding agent that is ready to
+run in that repository.
+
+`NOTE` Local capture does not require a [Secuarden AI](https://secuarden.ai) account.
 
 ```bash
 curl -fsSL https://install.secuarden.ai | sh
@@ -56,16 +64,14 @@ cd /path/to/your/repository
 secuarden init --repo .
 ```
 
-These instructions describe **v0.7.0**. Until that release is published, the
-installer may provide an earlier version. The installer selects the latest
-published GitHub release, verifies the archive checksum, and copies `secuarden`
-to `/usr/local/bin`. That directory must be writable. Build from this checkout
-to try unreleased commits. See [Contributing](#contributing).
+`NOTES`
 
-`init` always requires `--repo`, including inside a Git repository. It looks for
-Claude Code's shared settings file (`~/.claude/settings.json`) or the official
-Claude Code VS Code extension, and for a Codex CLI whose version and config
-support hooks. Choose one agent with `--agent claude-code` or `--agent codex`.
+- The installer selects the latest published GitHub release, verifies the archive checksum, and copies `secuarden` to `/usr/local/bin`. That directory must be writable. Build from this checkout to try unreleased commits. See [Contributing](#contributing).
+
+- `init` always requires `--repo`, including when run inside a Git repository. It looks for Claude Code's shared settings file (`~/.claude/settings.json`) or the official Claude Code VS Code extension, and for a Codex CLI whose version and config
+support hooks.
+
+- You can choose one agent with `--agent claude-code` or `--agent codex`.
 Codex also needs project trust and, when you want Secuarden to turn the feature
 on, `--enable-codex-hooks`. Detection does not sign you in to the agent. Follow
 the setup diagnostics, then use a real agent session to confirm delivery. See
@@ -77,12 +83,11 @@ change you can review, and run a relevant command. Then inspect:
 ```bash
 secuarden status
 secuarden events --last 20
-secuarden serve
 ```
 
-Open **http://127.0.0.1:8743** for the read-only local dashboard. `serve` accepts
-only a loopback address. Setup alone does not produce a meaningful activity
-history. If the log is empty, follow the
+You can open a local dashboard by running `secuarden serve`. It opens **http://127.0.0.1:8743** for the read-only local dashboard.
+
+`NOTE` `serve` accepts only a loopback address. Setup alone does not produce a meaningful activity history. If the log is empty, follow the
 [capture checks](docs/setup.md#checking-capture).
 
 `events` lists hook deliveries. A tool call normally appears twice, once for the
@@ -90,9 +95,7 @@ request and once for the reported result. `status` and `report` summarize those
 deliveries into sessions, files, commands, and attention items. Unknown command
 outcomes stay distinct from success.
 
-A new repository stays local-only without an API key. Re-running setup preserves
-existing sync settings. Capture scope defaults to all supported sessions for the
-OS user; use `--scope repo` to limit it to the selected repository.
+A new repository stays local-only without a `Secuarden AI` API key. Re-running setup  to add or remove API key, preserves existing sync settings. Capture scope defaults to all supported sessions for the OS user; use `--scope repo` to limit it to the selected repository.
 
 ### Confirm capture works
 
@@ -345,12 +348,3 @@ for setup or hook installation, because hooks store the executable's path.
 ## License
 
 [Apache 2.0](LICENSE). Built by [Secuarden](https://secuarden.ai).
-
-## Capture configuration attestation
-
-New setup enables configuration attestation by default. Deviations, restorations,
-disabling, and observation gaps remain in a separate local checksum history.
-Run `secuarden attestation watch` for observation independent of agent hooks;
-`secuarden attestation disable` stops checks without removing history.
-See [configuration attestation](docs/configuration-attestation.md) for scope,
-controls, baseline upgrades, reporting, and limitations.
