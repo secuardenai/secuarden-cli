@@ -7,22 +7,36 @@ import "time"
 
 const MaxObservationGap = 90 * time.Second
 
+type ContractRef struct {
+	Adapter string `json:"adapter"`
+	Version string `json:"version"`
+	Digest  string `json:"digest"`
+}
+type RequirementResult struct {
+	ID     string `json:"id"`
+	Status string `json:"status"` // pass, fail, unknown
+	Reason string `json:"reason,omitempty"`
+}
 type Snapshot struct {
-	Unknown    bool              `json:"unknown,omitempty"`
-	Components map[string]string `json:"components"`
-	Problems   []string          `json:"problems,omitempty"`
+	Contracts  []ContractRef       `json:"contracts,omitempty"`
+	Results    []RequirementResult `json:"results,omitempty"`
+	Unknown    bool                `json:"unknown,omitempty"`
+	Components map[string]string   `json:"components"`
+	Problems   []string            `json:"problems,omitempty"`
 }
 type Observer func([]string) Snapshot
 
 type State struct {
-	Enabled       bool      `json:"enabled"`
-	Agents        []string  `json:"agents"`
-	Baseline      Snapshot  `json:"baseline"`
-	BaselineID    string    `json:"baseline_id"`
-	Configuration string    `json:"configuration"`
-	LastObserved  time.Time `json:"last_observed,omitempty"`
-	LastMatching  time.Time `json:"last_matching,omitempty"`
-	Differences   []string  `json:"differences,omitempty"`
+	Contracts     []ContractRef       `json:"contracts,omitempty"`
+	Results       []RequirementResult `json:"results,omitempty"`
+	Enabled       bool                `json:"enabled"`
+	Agents        []string            `json:"agents"`
+	Baseline      Snapshot            `json:"baseline"`
+	BaselineID    string              `json:"baseline_id"`
+	Configuration string              `json:"configuration"`
+	LastObserved  time.Time           `json:"last_observed,omitempty"`
+	LastMatching  time.Time           `json:"last_matching,omitempty"`
+	Differences   []string            `json:"differences,omitempty"`
 }
 type Event struct {
 	Sequence            int       `json:"sequence"`

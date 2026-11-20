@@ -10,6 +10,7 @@ import (
 
 	"github.com/secuardenai/secuarden-cli/internal/agent"
 	"github.com/secuardenai/secuarden-cli/internal/attestation"
+	"github.com/secuardenai/secuarden-cli/internal/capturecontract"
 	"github.com/spf13/cobra"
 )
 
@@ -23,6 +24,12 @@ func writeAttestation(w io.Writer, r attestation.Report) {
 		fmt.Fprintln(w, "Error:", r.Error)
 	}
 	if r.State != nil {
+		for _, contract := range r.State.Contracts {
+			fmt.Fprintf(w, "Contract: %s v%s (%s)\n", contract.Adapter, contract.Version, contract.Digest)
+		}
+		for _, result := range r.State.Results {
+			fmt.Fprintf(w, "  %s: %s %s\n", terminalCell(result.ID), result.Status, terminalCell(result.Reason))
+		}
 		fmt.Fprintf(w, "Last observed: %s; last matching: %s\n", r.State.LastObserved.Format(time.RFC3339), r.State.LastMatching.Format(time.RFC3339))
 	}
 	for _, event := range r.History {
@@ -41,11 +48,11 @@ func writeAttestation(w io.Writer, r attestation.Report) {
 	fmt.Fprintln(w, r.Limitation)
 }
 func newAttestationCommand() *cobra.Command {
-	parent := &cobra.Command{Use: "attestation", Short: "Manage configuration baselines and permanent observation history"}
-	for _, action := range []string{"enable", "disable", "baseline", "check", "status", "history", "verify"} {
+	parent := &cobra.Command{SilenceErrors: true, Use: "attestation", Short: "Check embedded capture contracts and inspect observation history"}
+	for _, action := range []string{"enable", "disable", "check", "status", "history", "verify"} {
 		action := action
 		var names []string
-		var reason string
+
 		var asJSON bool
 		c := &cobra.Command{Use: action, Args: cobra.NoArgs, SilenceUsage: true, RunE: func(cmd *cobra.Command, _ []string) error {
 			var report attestation.Report
@@ -69,7 +76,7 @@ func newAttestationCommand() *cobra.Command {
 						names = append(names, "codex")
 					}
 				}
-				report, err = store.Apply(action, names, reason, time.Now(), agent.ObserveCaptureConfiguration)
+				report, err = store.Apply(action, names, "", time.Now(), agent.ObserveCaptureConfiguration)
 				if err != nil {
 					return err
 				}
@@ -84,7 +91,10 @@ func newAttestationCommand() *cobra.Command {
 			if report.Error != "" {
 				return fmt.Errorf("attestation unavailable: %s", report.Error)
 			}
-			if action == "check" && report.Status != "matches" {
+			if (action == "check" || action == "enable") && report.Status != "satisfied" {
+				if report.Status == "not_configured" {
+					return fmt.Errorf("configuration attestation is not configured for this OS user; run `secuarden attestation enable` (or specify `--agent claude-code` or `--agent codex`)")
+				}
 				return fmt.Errorf("configuration attestation: %s", report.Status)
 			}
 			if action == "verify" && report.Head == "" {
@@ -93,17 +103,25 @@ func newAttestationCommand() *cobra.Command {
 			return nil
 		}}
 		c.Flags().BoolVar(&asJSON, "json", false, "emit structured configuration state and full transition history")
-		if action == "enable" || action == "baseline" {
+		if action == "enable" {
 			c.Flags().StringSliceVar(&names, "agent", nil, "agents: claude-code,codex (default: installed agents)")
 		}
-		if action == "baseline" {
-			c.Flags().StringVar(&reason, "reason", "", "reason for explicitly accepting a new baseline")
-			_ = c.MarkFlagRequired("reason")
-		}
+		c.SilenceErrors = true
 		parent.AddCommand(c)
 	}
+	parent.AddCommand(&cobra.Command{SilenceErrors: true, Use: "contracts", Short: "Show the capture contracts embedded in this CLI", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		contracts := []capturecontract.Contract{}
+		for _, name := range []string{"claude-code", "codex"} {
+			c, _ := capturecontract.For(name)
+			contracts = append(contracts, c)
+		}
+		return writeJSON(cmd.OutOrStdout(), contracts)
+	}})
+	parent.AddCommand(&cobra.Command{SilenceErrors: true, Use: "baseline", Hidden: true, DisableFlagParsing: true, RunE: func(cmd *cobra.Command, _ []string) error {
+		return fmt.Errorf("capture contracts are embedded in the CLI; baseline replacement is no longer supported")
+	}})
 	var interval time.Duration
-	watch := &cobra.Command{Use: "watch", Short: "Observe independently of agent hooks until interrupted", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	watch := &cobra.Command{SilenceErrors: true, Use: "watch", Short: "Observe independently of agent hooks until interrupted", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if interval < time.Second || interval > 30*time.Second {
 			return fmt.Errorf("interval must be between 1s and 30s")
 		}
@@ -145,7 +163,7 @@ func initializeAttestation(enabled bool, explicit bool) error {
 			if r.Error != "" {
 				return fmt.Errorf("%s", r.Error)
 			}
-			if r.State != nil && (r.State.BaselineID != "" || (len(r.History) > 0 && r.History[len(r.History)-1].Kind == "disabled")) {
+			if r.State != nil && !r.State.Enabled {
 				return nil
 			}
 		} else if !os.IsNotExist(err) {
@@ -168,6 +186,9 @@ func initializeAttestation(enabled bool, explicit bool) error {
 	if !enabled {
 		action = "disable"
 	}
-	_, err = s.Apply(action, names, "installation setup", time.Now(), agent.ObserveCaptureConfiguration)
+	r, err := s.Apply(action, names, "installation setup", time.Now(), agent.ObserveCaptureConfiguration)
+	if err == nil && enabled && r.Status != "satisfied" {
+		return fmt.Errorf("capture contract %s: %v", r.Status, r.State.Differences)
+	}
 	return err
 }

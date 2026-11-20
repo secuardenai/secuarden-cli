@@ -20,6 +20,8 @@ func summarize(events []Event, now time.Time) Report {
 		r.Status = last.State.Configuration
 		if !last.State.Enabled {
 			r.Status = "disabled"
+		} else if len(last.State.Contracts) == 0 && last.State.BaselineID != "" {
+			r.Status = "legacy_unverified"
 		} else if now.Sub(last.State.LastObserved) > MaxObservationGap || now.Before(last.State.LastObserved) {
 			r.Status = "unknown"
 		}
@@ -59,5 +61,9 @@ func Failure(err error) Report {
 	return Report{Status: "unknown", Scope: "OS user", History: []Event{}, Error: err.Error(), Limitation: limitation}
 }
 func (r Report) Summary() string {
-	return fmt.Sprintf("%s; %d historical transitions; configuration only, not delivery", r.Status, len(r.History))
+	label := r.Status
+	if label == "satisfied" {
+		label = "capture contract satisfied"
+	}
+	return fmt.Sprintf("%s; %d historical transitions; configuration only, not delivery", label, len(r.History))
 }

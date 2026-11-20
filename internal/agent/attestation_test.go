@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -85,4 +87,133 @@ func attestationTestHome(t *testing.T) {
 	old := installedExecutable
 	installedExecutable = func() (string, error) { return binary, nil }
 	t.Cleanup(func() { installedExecutable = old })
+}
+
+func TestEmbeddedContractRejectsBadInitialSettings(t *testing.T) {
+	for _, name := range []string{"claude-code", "codex"} {
+		for _, test := range []struct {
+			name   string
+			mutate func(map[string]any, map[string]any)
+		}{
+			{"wrong handler", func(_, h map[string]any) { h["command"] = h["command"].(string) + "-wrong" }},
+			{"extra args", func(_, h map[string]any) { h["command"] = h["command"].(string) + " --ignore" }},
+			{"narrow matcher", func(g, h map[string]any) { g["matcher"] = "Read" }},
+			{"async pre", func(_, h map[string]any) { h["async"] = true }},
+			{"short timeout", func(_, h map[string]any) { h["timeout"] = 1 }},
+			{"disabled", func(_, h map[string]any) { h["enabled"] = false }},
+			{"wrong type", func(_, h map[string]any) { h["type"] = "prompt" }},
+		} {
+			t.Run(name+"/"+test.name, func(t *testing.T) {
+				attestationTestHome(t)
+				path := claudeSettingsPath()
+				if name == "codex" {
+					path = codexHooksPath()
+					if e := InstallCodexHooks(); e != nil {
+						t.Fatal(e)
+					}
+					os.WriteFile(codexConfigPath(), []byte("[features]\nhooks=true\n"), 0600)
+				} else if e := InstallHooks(); e != nil {
+					t.Fatal(e)
+				}
+				data, _ := os.ReadFile(path)
+				var settings map[string]any
+				json.Unmarshal(data, &settings)
+				group := settings["hooks"].(map[string]any)["PreToolUse"].([]any)[0].(map[string]any)
+				hook := group["hooks"].([]any)[0].(map[string]any)
+				test.mutate(group, hook)
+				data, _ = json.Marshal(settings)
+				os.WriteFile(path, data, 0600)
+				got := ObserveCaptureConfiguration([]string{name})
+				if len(got.Problems) == 0 {
+					t.Fatal("accepted invalid first configuration")
+				}
+			})
+		}
+	}
+}
+func TestContractAllowsHarmlessChanges(t *testing.T) {
+	attestationTestHome(t)
+	InstallHooks()
+	baseline := ObserveCaptureConfiguration([]string{"claude-code"})
+	data, _ := os.ReadFile(claudeSettingsPath())
+	var settings map[string]any
+	json.Unmarshal(data, &settings)
+	for _, entries := range settings["hooks"].(map[string]any) {
+		for _, raw := range entries.([]any) {
+			g := raw.(map[string]any)
+			g["description"] = "harmless label"
+			for _, raw := range g["hooks"].([]any) {
+				h := raw.(map[string]any)
+				h["timeout"] = 120
+				h["description"] = "new label"
+			}
+		}
+	}
+	data, _ = json.Marshal(settings)
+	os.WriteFile(claudeSettingsPath(), data, 0600)
+	if got := ObserveCaptureConfiguration([]string{"claude-code"}); !reflect.DeepEqual(got, baseline) {
+		t.Fatalf("harmless settings changed compliance: %+v", got)
+	}
+}
+func TestContractRejectsSubstituteCollector(t *testing.T) {
+	attestationTestHome(t)
+	InstallHooks()
+	binary, _ := installedExecutable()
+	// Different executable bytes cannot be legitimized by taking a new snapshot.
+	substitute := filepath.Join(t.TempDir(), "secuarden")
+	os.WriteFile(substitute, []byte("#!/bin/sh\nexit 1\n"), 0700)
+	data, _ := os.ReadFile(claudeSettingsPath())
+	data = []byte(strings.ReplaceAll(string(data), binary, substitute))
+	os.WriteFile(claudeSettingsPath(), data, 0600)
+	if got := ObserveCaptureConfiguration([]string{"claude-code"}); len(got.Problems) == 0 {
+		t.Fatal("accepted substitute collector")
+	}
+}
+
+func TestContractIgnoresUnrelatedCodexTrustAndDetectsHookState(t *testing.T) {
+	attestationTestHome(t)
+	if e := InstallCodexHooks(); e != nil {
+		t.Fatal(e)
+	}
+	os.WriteFile(codexConfigPath(), []byte("[features]\nhooks=true\n"), 0600)
+	baseline := ObserveCaptureConfiguration([]string{"codex"})
+	os.WriteFile(codexConfigPath(), []byte("[features]\nhooks=true\n[projects.\"/unrelated\"]\ntrust_level=\"untrusted\"\n"), 0600)
+	if got := ObserveCaptureConfiguration([]string{"codex"}); !reflect.DeepEqual(got, baseline) {
+		t.Fatal("unrelated project trust changed compliance")
+	}
+	id := codexHooksPath() + ":pre_tool_use:0:0"
+	os.WriteFile(codexConfigPath(), []byte("[features]\nhooks=true\n[hooks.state."+strconv.Quote(id)+"]\nenabled=false\n"), 0600)
+	if got := ObserveCaptureConfiguration([]string{"codex"}); len(got.Problems) == 0 {
+		t.Fatal("disabled required hook was accepted")
+	}
+}
+func TestContractAllowsRelocatedIdenticalCollectorAndLegacyArgs(t *testing.T) {
+	attestationTestHome(t)
+	InstallHooks()
+	baseline := ObserveCaptureConfiguration([]string{"claude-code"})
+	binary, _ := installedExecutable()
+	bytes, _ := os.ReadFile(binary)
+	copy := filepath.Join(t.TempDir(), "secuarden")
+	os.WriteFile(copy, bytes, 0700)
+	data, _ := os.ReadFile(claudeSettingsPath())
+	var settings map[string]any
+	json.Unmarshal(data, &settings)
+	for _, raw := range settings["hooks"].(map[string]any) {
+		for _, raw := range raw.([]any) {
+			group := raw.(map[string]any)
+			for _, raw := range group["hooks"].([]any) {
+				hook := raw.(map[string]any)
+				command := hook["command"].(string)
+				index := strings.LastIndex(command, " hook ")
+				handler := command[index+6:]
+				hook["command"] = shellQuote(copy)
+				hook["args"] = []string{"hook", handler}
+			}
+		}
+	}
+	data, _ = json.Marshal(settings)
+	os.WriteFile(claudeSettingsPath(), data, 0600)
+	if got := ObserveCaptureConfiguration([]string{"claude-code"}); !reflect.DeepEqual(got, baseline) {
+		t.Fatalf("equivalent collector invocation changed compliance: %+v", got)
+	}
 }

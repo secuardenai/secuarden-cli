@@ -1,92 +1,117 @@
 package attestation
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 )
 
+func testObservation(status, version string) Snapshot {
+	return Snapshot{Contracts: []ContractRef{{Adapter: "claude-code", Version: version, Digest: "contract-" + version}}, Results: []RequirementResult{{ID: "claude-code/pre", Status: status, Reason: status}}}
+}
 func TestLifecycleRetainsDeviationAndDisable(t *testing.T) {
-	s, err := Open(filepath.Join(t.TempDir(), "attestation.db"))
+	s, err := Open(filepath.Join(t.TempDir(), "a.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	now := time.Date(2026, 11, 20, 0, 0, 0, 0, time.UTC)
-	snapshot := Snapshot{Components: map[string]string{"hook": "original"}}
-	observer := func([]string) Snapshot { return snapshot }
+	now := time.Now()
+	snapshot := testObservation("pass", "1")
+	observe := func([]string) Snapshot { return snapshot }
 	apply := func(action string) Report {
 		t.Helper()
 		now = now.Add(time.Second)
-		r, e := s.Apply(action, []string{"claude-code"}, "", now, observer)
+		r, e := s.Apply(action, []string{"claude-code"}, "", now, observe)
 		if e != nil {
 			t.Fatal(e)
 		}
 		return r
 	}
-	baseline := apply("enable")
-	snapshot = Snapshot{Components: map[string]string{"hook": "missing"}}
-	r := apply("check")
-	if r.Status != "deviated" {
-		t.Fatalf("%+v", r)
+	if r := apply("enable"); r.Status != "satisfied" {
+		t.Fatal(r)
 	}
-	snapshot = Snapshot{Components: map[string]string{"hook": "original"}}
-	r = apply("check")
-	if r.Status != "matches" || len(r.History) != 3 || r.History[1].Kind != "deviation" || r.History[2].Kind != "restored" {
-		t.Fatalf("history lost: %+v", r)
+	snapshot = testObservation("fail", "1")
+	if r := apply("check"); r.Status != "violated" {
+		t.Fatal(r)
+	}
+	snapshot = testObservation("pass", "1")
+	r := apply("check")
+	if r.Status != "satisfied" || r.History[len(r.History)-1].Kind != "restored" {
+		t.Fatal(r)
 	}
 	apply("disable")
-	snapshot = Snapshot{Components: map[string]string{"hook": "different"}}
-	r = apply("check")
-	if r.Status != "disabled" {
-		t.Fatal(r.Status)
+	snapshot = testObservation("fail", "1")
+	if r := apply("check"); r.Status != "disabled" {
+		t.Fatal(r)
 	}
 	r = apply("enable")
-	if r.Status != "deviated" || r.State.BaselineID != baseline.State.BaselineID {
-		t.Fatal("enable silently rebaselined")
+	if r.Status != "violated" {
+		t.Fatal("reenable accepted violation")
 	}
-	if len(r.History) != 6 {
-		t.Fatalf("expected permanent transitions: %+v", r.History)
+	found := false
+	for _, e := range r.History {
+		if e.Kind == "deviation" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("lost history")
 	}
 }
-func TestGapUnknownAndExplicitBaseline(t *testing.T) {
+func TestInitialViolationCannotBeAccepted(t *testing.T) {
+	s, _ := Open(filepath.Join(t.TempDir(), "a.db"))
+	defer s.Close()
+	now := time.Now()
+	observe := func([]string) Snapshot { return testObservation("fail", "1") }
+	r, e := s.Apply("enable", []string{"claude-code"}, "", now, observe)
+	if e != nil || r.Status != "violated" {
+		t.Fatalf("%+v %v", r, e)
+	}
+	if _, e = s.Apply("baseline", nil, "accept broken hooks", now, observe); e == nil {
+		t.Fatal("accepted machine-defined compliance")
+	}
+}
+func TestGapUnknownAndContractUpgrade(t *testing.T) {
 	s, _ := Open(filepath.Join(t.TempDir(), "a.db"))
 	defer s.Close()
 	now := time.Now().UTC()
-	observation := Snapshot{Components: map[string]string{"hook": "a"}}
-	observe := func([]string) Snapshot { return observation }
-	if _, e := s.Apply("enable", []string{"codex"}, "", now, observe); e != nil {
-		t.Fatal(e)
-	}
+	snapshot := testObservation("pass", "1")
+	observe := func([]string) Snapshot { return snapshot }
+	s.Apply("enable", []string{"claude-code"}, "", now, observe)
 	r, e := s.Apply("check", nil, "", now.Add(2*time.Minute), observe)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if len(r.History) != 2 || r.History[1].Kind != "observation_gap" || !r.History[1].PreviousObservation.Equal(now) {
-		t.Fatalf("missing gap: %+v", r)
+	found := false
+	for _, e := range r.History {
+		if e.Kind == "observation_gap" && e.PreviousObservation.Equal(now) {
+			found = true
+		}
 	}
-	observation = Snapshot{Unknown: true, Problems: []string{"unreadable"}}
+	if !found {
+		t.Fatal("missing gap")
+	}
+	snapshot = testObservation("unknown", "1")
 	r, e = s.Apply("check", nil, "", now.Add(121*time.Second), observe)
 	if e != nil || r.Status != "unknown" {
 		t.Fatalf("%+v %v", r, e)
 	}
-	if _, e = s.Apply("baseline", nil, "", now.Add(122*time.Second), observe); e == nil {
-		t.Fatal("baseline without reason")
-	}
-	observation = Snapshot{Components: map[string]string{"hook": "b"}}
-	r, e = s.Apply("baseline", nil, "approved upgrade", now.Add(123*time.Second), observe)
-	if e != nil || r.Status != "matches" {
+	snapshot = testObservation("pass", "2")
+	r, e = s.Apply("check", nil, "", now.Add(122*time.Second), observe)
+	if e != nil || r.Status != "satisfied" {
 		t.Fatalf("%+v %v", r, e)
 	}
-	if r.History[len(r.History)-1].Reason != "approved upgrade" {
-		t.Fatal("missing baseline reason")
+	if r.History[len(r.History)-2].Kind != "contract_changed" || r.State.Contracts[0].Version != "2" {
+		t.Fatal("missing contract transition")
 	}
 }
 func TestCorruptionStopsAppend(t *testing.T) {
 	s, _ := Open(filepath.Join(t.TempDir(), "a.db"))
 	defer s.Close()
-	observe := func([]string) Snapshot { return Snapshot{Components: map[string]string{"x": "a"}} }
+	observe := func([]string) Snapshot { return testObservation("pass", "1") }
 	s.Apply("enable", []string{"claude-code"}, "", time.Now(), observe)
 	if _, e := s.db.Exec("UPDATE configuration_attestation SET hash='corrupt'"); e != nil {
 		t.Fatal(e)
@@ -95,7 +120,33 @@ func TestCorruptionStopsAppend(t *testing.T) {
 		t.Fatal("accepted corrupted history")
 	}
 	if _, e := s.Read(time.Now()); e == nil {
-		t.Fatal("reported corrupted history as valid")
+		t.Fatal("reported corrupt history as valid")
+	}
+}
+func TestLegacyHistoryMigratesWithoutRewrite(t *testing.T) {
+	s, _ := Open(filepath.Join(t.TempDir(), "a.db"))
+	defer s.Close()
+	const body = `{"sequence":1,"kind":"baseline","observed_at":"2026-11-20T00:00:00Z","previous_observation":"0001-01-01T00:00:00Z","state":{"enabled":true,"agents":["claude-code"],"baseline":{"components":{"hook":"old"}},"baseline_id":"legacy","configuration":"matches","last_observed":"2026-11-20T00:00:00Z","last_matching":"2026-11-20T00:00:00Z"},"previous_hash":"","hash":""}`
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(body)))
+	if _, e := s.db.Exec("INSERT INTO configuration_attestation VALUES (1,?,?)", body, hash); e != nil {
+		t.Fatal(e)
+	}
+	now := time.Date(2026, 11, 20, 0, 0, 1, 0, time.UTC)
+	r, e := s.Read(now)
+	if e != nil || r.Status != "legacy_unverified" {
+		t.Fatalf("%+v %v", r, e)
+	}
+	r, e = s.Apply("check", nil, "", now, func([]string) Snapshot { return testObservation("fail", "1") })
+	if e != nil || r.Status != "violated" {
+		t.Fatalf("%+v %v", r, e)
+	}
+	if r.History[0].Hash != hash || r.History[1].Kind != "contract_migrated" {
+		t.Fatal("legacy history changed")
+	}
+	var stored string
+	s.db.QueryRow("SELECT body FROM configuration_attestation WHERE sequence=1").Scan(&stored)
+	if stored != body {
+		t.Fatal("rewrote original record")
 	}
 }
 func TestDisabledNeverObservesAndConcurrency(t *testing.T) {
@@ -133,22 +184,5 @@ func TestCurrentDoesNotCreateStore(t *testing.T) {
 	r := Current(nil, true)
 	if r.Status != "not_configured" {
 		t.Fatal(r)
-	}
-}
-
-func TestRejectedBaselineRetainsObservedDeviation(t *testing.T) {
-	s, _ := Open(filepath.Join(t.TempDir(), "a.db"))
-	defer s.Close()
-	now := time.Now()
-	snap := Snapshot{Components: map[string]string{"hook": "a"}}
-	observe := func([]string) Snapshot { return snap }
-	s.Apply("enable", []string{"claude-code"}, "", now, observe)
-	snap = Snapshot{Components: map[string]string{}, Problems: []string{"missing hook"}}
-	if _, err := s.Apply("baseline", nil, "attempt", now.Add(time.Second), observe); err == nil {
-		t.Fatal("accepted incomplete baseline")
-	}
-	r, err := s.Read(now.Add(time.Second))
-	if err != nil || r.Status != "deviated" || len(r.History) != 3 {
-		t.Fatalf("lost rejection/deviation: %+v %v", r, err)
 	}
 }

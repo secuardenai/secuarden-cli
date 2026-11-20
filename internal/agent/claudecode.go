@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/secuardenai/secuarden-cli/internal/capturecontract"
 	"io"
 	"os"
 	"path/filepath"
@@ -25,46 +26,14 @@ type hookMatcher struct {
 }
 
 // secuardenHooks is the configuration block we merge into settings.json.
-var secuardenHooks = map[string][]hookMatcher{
-	"UserPromptSubmit": {
-		{Hooks: []hookEntry{{Type: "command", Command: "secuarden", Args: []string{"hook", "user-prompt-submit"}, Timeout: 5, Async: true}}},
-	},
-	"PreToolUse": {
-		{
-			Matcher: "*",
-			Hooks: []hookEntry{
-				// Persist the before-state checkpoint before Claude starts the tool.
-				// An async pre-hook can finish after the corresponding post-hook.
-				{Type: "command", Command: "secuarden", Args: []string{"hook", "pre-tool-use"}, Timeout: 5, Async: false},
-			},
-		},
-	},
-	"PostToolUse": {
-		{
-			Matcher: "*",
-			Hooks: []hookEntry{
-				{Type: "command", Command: "secuarden", Args: []string{"hook", "post-tool-use"}, Timeout: 5, Async: true},
-			},
-		},
-	},
-	"SessionStart": {
-		{
-			Hooks: []hookEntry{
-				{Type: "command", Command: "secuarden", Args: []string{"hook", "session-start"}, Timeout: 5, Async: true},
-			},
-		},
-	},
-	"SessionEnd": {
-		{
-			Hooks: []hookEntry{
-				// Async: false so Claude Code waits for the process and the developer
-				// sees SaaS feedback printed to stdout when sync is enabled.
-				// The binary exits in <10ms when sync is disabled, so the wait is negligible.
-				{Type: "command", Command: "secuarden", Args: []string{"hook", "session-end"}, Timeout: 10, Async: false},
-			},
-		},
-	},
-}
+var secuardenHooks = func() map[string][]hookMatcher {
+	contract, _ := capturecontract.For("claude-code")
+	result := map[string][]hookMatcher{}
+	for _, h := range contract.Hooks {
+		result[h.Event] = []hookMatcher{{Matcher: h.Matcher, Hooks: []hookEntry{{Type: "command", Command: "secuarden", Args: []string{"hook", h.Handler}, Timeout: h.MinTimeout, Async: !h.Synchronous}}}}
+	}
+	return result
+}()
 
 // InstallHooks merges Secuarden hooks into ~/.claude/settings.json.
 // It backs up the file first and preserves all existing hooks.

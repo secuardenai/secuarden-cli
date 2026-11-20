@@ -4,14 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"slices"
 	"sort"
 	"time"
 )
 
 // Apply serializes observation and state changes across independent CLI/monitor processes.
-// Existing history is verified before appending; no operation silently rebaselines.
+// Existing history is verified before appending. Compliance comes only from the embedded adapter contracts.
 func (s *Store) Apply(action string, agents []string, reason string, now time.Time, observe Observer) (Report, error) {
+	if action == "baseline" {
+		return Report{}, fmt.Errorf("capture contracts are defined by the CLI; accepting a machine snapshot is no longer supported")
+	}
 	conn, err := s.db.Conn(context.Background())
 	if err != nil {
 		return Report{}, err
@@ -54,27 +58,44 @@ func (s *Store) Apply(action string, agents []string, reason string, now time.Ti
 			}
 		}
 		snapshot := observe(state.Agents)
-		differences := diff(state.Baseline, snapshot)
-		status := "matches"
-		if snapshot.Unknown {
-			status = "unknown"
-		} else if len(differences) > 0 {
-			status = "deviated"
-		}
+		status, differences := evaluate(snapshot)
+		changed := !reflect.DeepEqual(state.Contracts, snapshot.Contracts)
 		kind := "checked"
+		if changed {
+			transition := "contract_changed"
+			if len(state.Contracts) == 0 {
+				transition = "contract_established"
+				if state.BaselineID != "" {
+					transition = "contract_migrated"
+				}
+			}
+			state.Contracts = snapshot.Contracts
+			// Record adoption separately, without certifying compliance.
+			state.Configuration = "unknown"
+			state.Results = nil
+			state.Differences = nil
+			if err := appendEvent(transition, &snapshot, previous); err != nil {
+				return err
+			}
+		}
 		if status != state.Configuration || !slices.Equal(differences, state.Differences) {
 			kind = "deviation"
-			if status == "matches" {
+			if status == "satisfied" {
 				kind = "restored"
+				if changed {
+					kind = "contract_satisfied"
+				}
 			}
 			if status == "unknown" {
 				kind = "observation_failed"
 			}
 		}
+		state.Results = snapshot.Results
+
 		state.Configuration = status
 		state.Differences = differences
 		state.LastObserved = now.UTC()
-		if status == "matches" {
+		if status == "satisfied" {
 			state.LastMatching = now.UTC()
 		}
 		return appendEvent(kind, &snapshot, previous)
@@ -91,45 +112,25 @@ func (s *Store) Apply(action string, agents []string, reason string, now time.Ti
 		} else if len(events) == 0 {
 			err = appendEvent("disabled", nil, time.Time{})
 		}
-	case "enable", "baseline":
-		if action == "baseline" && reason == "" {
-			return Report{}, fmt.Errorf("baseline requires a reason")
+	case "enable":
+		previousAgents := append([]string(nil), state.Agents...)
+		// Enabling can add adapters, but cannot silently remove existing coverage.
+		state.Agents = append(append([]string(nil), state.Agents...), agents...)
+		sort.Strings(state.Agents)
+		state.Agents = slices.Compact(state.Agents)
+		if len(state.Agents) == 0 {
+			return Report{}, fmt.Errorf("select at least one agent")
 		}
-		if state.BaselineID != "" && action == "enable" {
-			if !state.Enabled {
-				state.Enabled = true
-				err = appendEvent("enabled", nil, state.LastObserved)
-			}
-			if err == nil {
-				err = check()
-			}
-		} else {
-			if len(agents) == 0 {
-				agents = state.Agents
-			}
-			if len(agents) == 0 {
-				return Report{}, fmt.Errorf("select at least one agent")
-			}
-			if state.Enabled {
-				if err = check(); err != nil {
-					return Report{}, err
-				}
-			}
-			snapshot := observe(agents)
-			if snapshot.Unknown || len(snapshot.Problems) > 0 || len(snapshot.Components) == 0 {
-				// Keep observations made during a rejected rebaseline attempt.
-				if err = appendEvent("baseline_rejected", &snapshot, state.LastObserved); err != nil {
-					return Report{}, err
-				}
-				if _, err = conn.ExecContext(context.Background(), "COMMIT"); err != nil {
-					return Report{}, err
-				}
-				return summarize(events, now), fmt.Errorf("cannot establish baseline: %v", snapshot.Problems)
-			}
-			sort.Strings(agents)
-			state = State{Enabled: true, Agents: agents, Baseline: snapshot, BaselineID: digest(snapshot), Configuration: "matches", LastObserved: now.UTC(), LastMatching: now.UTC()}
-			err = appendEvent("baseline", &snapshot, time.Time{})
+		if !state.Enabled {
+			state.Enabled = true
+			err = appendEvent("enabled", nil, state.LastObserved)
+		} else if !slices.Equal(previousAgents, state.Agents) {
+			err = appendEvent("adapters_added", nil, state.LastObserved)
 		}
+		if err == nil {
+			err = check()
+		}
+
 	default:
 		return Report{}, fmt.Errorf("unknown attestation action %q", action)
 	}
@@ -141,19 +142,31 @@ func (s *Store) Apply(action string, agents []string, reason string, now time.Ti
 	}
 	return summarize(events, now), nil
 }
-func diff(a, b Snapshot) []string {
-	changes := []string{}
-	for k, v := range a.Components {
-		if b.Components[k] != v {
-			changes = append(changes, k)
+
+// evaluate consumes requirement results, never equality with a saved machine state.
+func evaluate(snapshot Snapshot) (string, []string) {
+	differences := []string{}
+	status := "satisfied"
+	if len(snapshot.Contracts) == 0 || len(snapshot.Results) == 0 {
+		status = "unknown"
+		differences = append(differences, "adapter contract evaluation unavailable")
+	}
+	for _, result := range snapshot.Results {
+		switch result.Status {
+		case "pass":
+		case "fail":
+			if status != "unknown" {
+				status = "violated"
+			}
+			differences = append(differences, result.ID+": "+result.Reason)
+		default:
+			status = "unknown"
+			differences = append(differences, result.ID+": "+result.Reason)
 		}
 	}
-	for k := range b.Components {
-		if _, ok := a.Components[k]; !ok {
-			changes = append(changes, k)
-		}
+	if snapshot.Unknown {
+		status = "unknown"
 	}
-	changes = append(changes, b.Problems...)
-	sort.Strings(changes)
-	return changes
+	sort.Strings(differences)
+	return status, differences
 }
