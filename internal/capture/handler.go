@@ -18,6 +18,7 @@ import (
 	"github.com/secuardenai/secuarden-cli/internal/events"
 	"github.com/secuardenai/secuarden-cli/internal/identity"
 	"github.com/secuardenai/secuarden-cli/internal/policy"
+	"github.com/secuardenai/secuarden-cli/internal/posture"
 	"github.com/secuardenai/secuarden-cli/internal/privacy"
 	"github.com/secuardenai/secuarden-cli/internal/scope"
 	"github.com/secuardenai/secuarden-cli/internal/storage"
@@ -154,6 +155,7 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 	// 6. Extract fields
 	filePath := events.ExtractFilePath(raw.ToolInput)
 	command := events.ExtractCommand(raw.ToolInput)
+	rawPatch := command
 	diffStats := events.ExtractDiffStats(raw.ToolInput)
 	var affectedFiles []events.AffectedFile
 	patchLimited := false
@@ -289,6 +291,31 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 		}
 	}
 
+	var revision editCapture
+	var haveRevision bool
+	var findings []storage.PostureFinding
+	if actionType == events.ActionFileWrite && (hookPhase == events.HookPhasePre || hookPhase == events.HookPhasePost) {
+		// Do not restore a previously captured prompt after switching to metadata-only.
+		if privacyMode != "metadata_only" {
+			intentSummary, err = db.LatestIntent(sessionID)
+			if err != nil {
+				return fmt.Errorf("read session prompt: %w", err)
+			}
+		}
+		revision, haveRevision = editFromTool(toolName, raw.ToolInput, filePath, rawPatch, isSensitive, privacyMode)
+		if haveRevision {
+			for _, finding := range posture.Detect(intentSummary, revision.Before, revision.After) {
+				findings = append(findings, storage.PostureFinding{
+					ID: uuid.New().String(), EventID: eventID, SessionID: sessionID,
+					Kind: finding.Kind, Path: revision.Path,
+					PromptExcerpt: posture.Excerpt(intentSummary), Explanation: finding.Explanation,
+				})
+			}
+			revision.Before, _ = privacy.Redact(revision.Before)
+			revision.After, _ = privacy.Redact(revision.After)
+		}
+	}
+
 	// Update session with identity info if we have it.
 	// Scrub credentials from git remote URLs before storage — HTTP remotes can
 	// contain embedded tokens (https://user:token@host/...).
@@ -390,6 +417,18 @@ func handleWithParser(phase, version, agentName, provider string, parse func([]b
 	if err := db.WriteEvent(e); err != nil {
 		_ = db.RecordCaptureFailure(sessionID, hookPhase, "event_persistence_rejected")
 		return err
+	}
+
+	if haveRevision {
+		if err := db.SaveEditRevision(storage.EditRevision{
+			EventID: e.ID, SessionID: sessionID, Path: revision.Path,
+			Before: revision.Before, After: revision.After, Truncated: revision.Truncated,
+		}); err != nil {
+			return fmt.Errorf("store edit revision: %w", err)
+		}
+	}
+	if err := db.SaveFindings(findings); err != nil {
+		return fmt.Errorf("store posture findings: %w", err)
 	}
 
 	// For session_end: write the event first so EndSession sees the correct

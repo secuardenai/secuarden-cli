@@ -16,7 +16,12 @@ they run. No policy is active until you import one.
 ## New in v0.7.0
 
 - Captured sessions keep their git branch and remote after later hook events
-  arrive without a working directory.
+  arrive without a working directory. What that means?
+    > A captured session is a record of an AI agent’s activity. Hook events are notifications the agent sends when something happens, such as reading or editing a file. Secuarden uses the event’s working directory to find the Git repository and record its:
+    >    - Branch: for example, feature/login
+    >    - Remote: for example, https://github.com/team/app.git
+
+    > Some later events don’t include a working directory. That missing information should not erase what Secuarden already knows.
 - `secuarden report` resolves relative paths using the event directory, falling
   back to the session directory when the event supplies none. Paths inside that
   repository count as repository files.
@@ -43,7 +48,7 @@ is available. Previously lost Git identity is not reconstructed.
 ## Install and try it
 
 You need Git, a local Git repository, and a supported agent that is ready to
-run in that repository. Local capture does not require a Secuarden account.
+run in that repository. Local capture does not require a [Secuarden AI](https://secuarden.ai) account.
 
 ```bash
 curl -fsSL https://install.secuarden.ai | sh
@@ -142,26 +147,29 @@ required trust. Cursor, Copilot, and Windsurf integrations are not included.
 See repository-scoped setup, inspect captured activity and sensitive-path access,
 and verify the stored evidence with the current CLI.
 
-> Reproducible walkthrough using synthetic Claude Code hook payloads and actual
-> CLI output. Runs in a disposable local environment; no live agent or SaaS call.
-> The reported test failure is simulated. Hash verification checks stored records,
-> not capture completeness. The raw fixtures replayed without working
-> directories on later events remain checkpoint-partial; the walkthrough
-> generator supplies those directories.
 
-[Read the demo transcript](docs/demo/transcript.txt) ·
-[Reproduce the demo](docs/demo/README.md)
+## What you can inspect?
 
-## What you can inspect
-
-- **Agent activity:** captured file reads and writes, commands and reported
-  outcomes, MCP calls, sensitive-path access, and session identity.
-- **Local summaries:** activity, agent, timeline, file, command, and attention
-  views with drilldowns.
-- **Evidence integrity:** per-session hash-chain verification and AI Bill of
-  Materials (AI-BOM) export.
-- **Committed changes:** Git-anchored change records, optional Codex observation
-  coverage, and signed change receipts.
+- **Coding Agent activity:**
+    - captured file reads and writes,
+    - commands and reported outcomes,
+    - MCP calls,
+    - sensitive-path access, and
+    - session identity.
+- **Local summaries:**
+    - activity,
+    - agent,
+    - timeline,
+    - file,
+    - command, and
+    - attention views with drilldowns.
+- **Evidence integrity:**
+    - per-session hash-chain verification and
+    - AI Bill of Materials (AI-BOM) export.
+- **Committed changes:**
+    - Git-anchored change records,
+    - optional Codex observation coverage, and
+    - signed change receipts.
 
 ```bash
 secuarden report --since 24h --md
@@ -170,9 +178,9 @@ secuarden ledger build --repo . --head HEAD --base BASE_COMMIT
 
 `report` defaults to the Git repository containing the current directory. Use
 `--repo` for another repository or `--all-repos` for every captured repository.
-Relative captured paths resolve against the event's absolute working directory,
-falling back to the session directory when the event supplies none. Paths outside
-the repository root and paths without an absolute directory to resolve against
+
+`Note` Relative captured paths resolve against the event's absolute working directory,
+falling back to the session directory when the event does not supply one. Paths outside the repository root and paths without an absolute directory to resolve against
 remain external. Reporting resolves directory aliases without rewriting stored
 evidence.
 
@@ -183,49 +191,6 @@ Uncommitted work is excluded. `--base-ref origin/main` selects the merge-base of
 change record is empty. Pass an ancestor with `--base` to record the commits
 after it. The ref must exist locally. See [activity commands](docs/activity.md)
 and [ledger workflows](docs/ledger.md).
-
-## Local policy enforcement
-
-Policy enforcement is off until you import a bundle. v0.1 protects configured
-Python route security decorators on supported file tools. The [example policy bundle](fixtures/policy/flask-security.json) covers common
-Flask login and role decorators. Download that JSON file before importing it,
-or run the following from a source checkout:
-
-```bash
-secuarden policy upload --file fixtures/policy/flask-security.json
-secuarden policy list
-```
-
-Imported policies are stored at `~/.secuarden/policies.json` for the whole OS
-user. They apply in every repository, including repositories outside the capture
-scope. The next synchronous pre-tool hook loads them. `python3` 3.8 or newer
-must be on the hook process `PATH`. The hook parses Python with `ast` and does
-not import or execute project code.
-
-While any v0.1 policy is active:
-
-- Supported file tools are `Edit`, `Write`, `MultiEdit`, and exact-context Codex
-  `apply_patch`. A change to a protected decorator stack is denied. A route-body
-  edit that leaves that stack in place is allowed.
-- Shell commands and unsupported tools are denied. Supported read/search tools
-  remain allowed; run shell commands such as tests in your own terminal.
-- A denial is returned to the agent and is not written to the capture database.
-  Passive capture continues for tool calls the policy allows.
-- A missing policy file leaves capture passive. An unreadable policy file denies
-  tool calls.
-
-This is decorator-syntax protection on hooked file operations. It is not an OS
-sandbox and it does not prove that authentication works. Direct human edits,
-disabled hooks, other processes, dynamic route registration, and changes to the
-decorator's implementation are outside v0.1. There is no `policy remove` command
-yet. To disable every imported policy and keep a backup:
-
-```bash
-mv ~/.secuarden/policies.json ~/.secuarden/policies.json.disabled
-```
-
-Details, the JSON contract, and the Flask demo are in
-[local policy enforcement v0.1](docs/policy-v0.1.md).
 
 ## Privacy and optional sync
 
@@ -296,6 +261,59 @@ Run these where the relevant captured database is available. A clean CI runner
 does not automatically have evidence from a developer's machine. Legacy records
 without complete hashing cannot gain integrity coverage retroactively. See
 [verification behavior](docs/activity.md#provenance-integrity-and-ci-gate).
+
+
+# `EXPERIMENTAL` Features
+
+## Local policy enforcement
+
+Policy enforcement is off until you import a bundle.
+
+`Experimental v0.1` protects configured Python route security decorators on supported file tools. The [example policy bundle](fixtures/policy/flask-security.json) covers common Flask login and role decorators. Download that JSON file before importing it,
+or run the following from a source checkout:
+
+```bash
+secuarden policy upload --file fixtures/policy/flask-security.json
+secuarden policy list
+```
+
+`NOTE`
+
+- Imported policies are stored at `~/.secuarden/policies.json` for the all OS
+user.
+- They apply in every repository, including repositories outside the capture
+scope.
+- The next synchronous pre-tool hook loads them.
+- `python3` 3.8 or newer must be on the hook process `PATH`.
+- The hook parses Python with `ast` and does not import or execute project code.
+
+While `any v0.1` policy is active:
+
+- Supported file tools are `Edit`, `Write`, `MultiEdit`, and exact-context Codex
+  `apply_patch`.
+- A change to a protected decorator stack is denied. A route-body
+  edit that leaves that stack in place is allowed.
+- Shell commands and unsupported tools are denied. Supported read/search tools
+  remain allowed; run shell commands such as tests in your own terminal.
+- A denial is returned to the agent and is not written to the capture database.
+  Passive capture continues for tool calls the policy allows.
+- A missing policy file leaves capture passive. An unreadable policy file denies
+  tool calls.
+
+This is decorator-syntax protection on hooked file operations. It is not an OS
+sandbox and it does not prove that authentication works. Direct human edits,
+disabled hooks, other processes, dynamic route registration, and changes to the
+decorator's implementation are outside v0.1. There is no `policy remove` command
+yet. To disable every imported policy and keep a backup:
+
+```bash
+mv ~/.secuarden/policies.json ~/.secuarden/policies.json.disabled
+```
+
+Details, the JSON contract, and the Flask demo are in
+[local policy enforcement v0.1](docs/policy-v0.1.md).
+
+
 
 ## Guides
 

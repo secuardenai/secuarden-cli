@@ -102,4 +102,24 @@ CREATE TABLE IF NOT EXISTS capture_failures (
     FOREIGN KEY (session_id) REFERENCES sessions(id)
 );
 CREATE INDEX IF NOT EXISTS idx_capture_failures_session ON capture_failures(session_id);
+CREATE TABLE IF NOT EXISTS edit_revisions (
+    event_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    before_text TEXT NOT NULL,
+    after_text TEXT NOT NULL,
+    truncated INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (event_id) REFERENCES events(id)
+);
+CREATE TABLE IF NOT EXISTS posture_findings (
+    id TEXT PRIMARY KEY,
+    event_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    path TEXT,
+    prompt_excerpt TEXT,
+    explanation TEXT NOT NULL,
+    FOREIGN KEY (event_id) REFERENCES events(id)
+);
+CREATE INDEX IF NOT EXISTS idx_posture_findings_event ON posture_findings(event_id);
 `
