@@ -7,6 +7,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/secuardenai/secuarden-cli/internal/attestation"
 	"github.com/secuardenai/secuarden-cli/internal/repository"
 	"github.com/secuardenai/secuarden-cli/internal/storage"
 	"github.com/spf13/cobra"
@@ -21,10 +22,11 @@ type verifyOptions struct {
 
 type verificationReport struct {
 	*storage.IntegrityResult
-	Status     string `json:"status"`
-	Scope      string `json:"scope"`
-	Repository string `json:"repository,omitempty"`
-	Storage    string `json:"storage"`
+	ConfigurationAttestation *attestation.Report `json:"configuration_attestation,omitempty"`
+	Status                   string              `json:"status"`
+	Scope                    string              `json:"scope"`
+	Repository               string              `json:"repository,omitempty"`
+	Storage                  string              `json:"storage"`
 }
 
 func newVerifyCommand() *cobra.Command {
@@ -101,6 +103,12 @@ func runVerify(cmd *cobra.Command, options verifyOptions) error {
 		report.Status = "no_records"
 		result.Valid = false
 	}
+	attestationReport := currentAttestation()
+	report.ConfigurationAttestation = &attestationReport
+	if attestationReport.Error != "" {
+		report.Status = "failed"
+		result.Valid = false
+	}
 	if options.json {
 		err = writeJSON(cmd.OutOrStdout(), report)
 	} else {
@@ -128,6 +136,9 @@ var findingLabels = map[string]string{
 }
 
 func renderVerification(w io.Writer, report verificationReport, repositories map[string]string, details bool) error {
+	if report.ConfigurationAttestation != nil {
+		writeAttestation(w, *report.ConfigurationAttestation)
+	}
 	title := map[string]string{"verified": "VERIFIED", "failed": "FAILED", "no_records": "NO RECORDS"}[report.Status]
 	fmt.Fprintf(w, "Audit trail verification %s\n\n", title)
 	scope := report.Repository

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/secuardenai/secuarden-cli/internal/attestation"
 	"github.com/secuardenai/secuarden-cli/internal/risk"
 	"github.com/secuardenai/secuarden-cli/internal/storage"
 	"github.com/spf13/cobra"
@@ -12,11 +13,12 @@ import (
 var bomSince string
 
 type aiBOM struct {
-	Format      string                   `json:"format"`
-	Version     string                   `json:"version"`
-	GeneratedAt string                   `json:"generated_at"`
-	Integrity   *storage.IntegrityResult `json:"integrity"`
-	Components  []bomComponent           `json:"components"`
+	ConfigurationAttestation attestation.Report       `json:"configuration_attestation"`
+	Format                   string                   `json:"format"`
+	Version                  string                   `json:"version"`
+	GeneratedAt              string                   `json:"generated_at"`
+	Integrity                *storage.IntegrityResult `json:"integrity"`
+	Components               []bomComponent           `json:"components"`
 }
 type bomComponent struct {
 	storage.ProvenanceRecord
@@ -48,7 +50,7 @@ var bomCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		out := aiBOM{Format: "secuarden-ai-bom", Version: "1.0", GeneratedAt: time.Now().UTC().Format(time.RFC3339), Integrity: integrity, Components: []bomComponent{}}
+		out := aiBOM{ConfigurationAttestation: currentAttestation(), Format: "secuarden-ai-bom", Version: "1.0", GeneratedAt: time.Now().UTC().Format(time.RFC3339), Integrity: integrity, Components: []bomComponent{}}
 		for _, record := range records {
 			out.Components = append(out.Components, bomComponent{ProvenanceRecord: record, Risk: risk.Assess(record.FilePath, record.IsSensitive)})
 		}

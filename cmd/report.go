@@ -87,6 +87,8 @@ func runReport(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	attestationReport := currentAttestation()
+	report.ConfigurationAttestation = &attestationReport
 	if reportJSON {
 		return writeJSON(cmd.OutOrStdout(), report)
 	}
@@ -340,6 +342,18 @@ func renderReportWithOptions(w io.Writer, r *storage.AccountabilityReport, markd
 	}
 
 	heading(1, "Secuarden accountability report")
+	if r.ConfigurationAttestation != nil {
+		heading(2, "Capture configuration attestation")
+		bullet(r.ConfigurationAttestation.Summary())
+		for _, event := range r.ConfigurationAttestation.History {
+			bullet(fmt.Sprintf("%s · %s · %s", event.At.Format(time.RFC3339), event.Kind, strings.Join(event.State.Differences, "; ")))
+		}
+		if r.ConfigurationAttestation.Error != "" {
+			bullet(r.ConfigurationAttestation.Error)
+		}
+		bullet(r.ConfigurationAttestation.Limitation)
+		sectionEnd()
+	}
 	repositoryLabel := displayRepositoryIdentity(r.Repository)
 	if repositoryLabel != "" {
 		fmt.Fprintf(w, "Repository: %s\n", repositoryLabel)

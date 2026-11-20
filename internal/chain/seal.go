@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/secuardenai/secuarden-cli/internal/attestation"
 	"github.com/secuardenai/secuarden-cli/internal/changereceipt"
 	"github.com/secuardenai/secuarden-cli/internal/config"
 )
@@ -44,11 +45,12 @@ func SealReport(ctx context.Context, cfg *config.Config, report *Report) (*Seal,
 		report.Entries = []Entry{}
 	}
 	raw, err := json.Marshal(struct {
-		Schema  string  `json:"schema"`
-		Base    string  `json:"base"`
-		Head    string  `json:"head"`
-		Entries []Entry `json:"entries"`
-	}{ProtocolVersion, report.Base, report.Head, report.Entries})
+		Schema                   string              `json:"schema"`
+		Base                     string              `json:"base"`
+		Head                     string              `json:"head"`
+		Entries                  []Entry             `json:"entries"`
+		ConfigurationAttestation *attestation.Report `json:"configuration_attestation,omitempty"`
+	}{ProtocolVersion, report.Base, report.Head, report.Entries, report.ConfigurationAttestation})
 	if err != nil {
 		return nil, err
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/secuardenai/secuarden-cli/internal/attestation"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -596,29 +597,30 @@ type NamedCount struct {
 
 // AccountabilityReport is an aggregate over an explicit local time window.
 type AccountabilityReport struct {
-	Since                  string               `json:"since"`
-	Until                  string               `json:"until"`
-	Totals                 ActivityCounts       `json:"totals"`
-	Agents                 []NamedCount         `json:"agents"`
-	FilesRead              []string             `json:"files_read"`
-	FilesChanged           []string             `json:"files_changed"`
-	SensitiveAccesses      []StoredEvent        `json:"sensitive_accesses"`
-	Attention              []AttentionFinding   `json:"attention"`
-	CommandExecutions      int                  `json:"command_executions"`
-	CommandSuccesses       int                  `json:"command_successes"`
-	CommandFailures        int                  `json:"command_failures"`
-	CommandUnknowns        int                  `json:"command_unknowns"`
-	MCPActivity            []NamedCount         `json:"mcp_activity"`
-	Developers             []NamedCount         `json:"developers"`
-	Branches               []NamedCount         `json:"branches"`
-	Repository             string               `json:"repository,omitempty"`
-	FileEntries            []ReportPath         `json:"file_entries,omitempty"`
-	RepositoryGroups       []RepositoryReport   `json:"repository_groups,omitempty"`
-	PathEvidence           []ReportPathEvidence `json:"-"`
-	RepositoryFilesRead    []string             `json:"repository_files_read"`
-	ExternalFilesRead      []string             `json:"external_files_read"`
-	RepositoryFilesChanged []string             `json:"repository_files_changed"`
-	ExternalFilesChanged   []string             `json:"external_files_changed"`
+	ConfigurationAttestation *attestation.Report  `json:"configuration_attestation,omitempty"`
+	Since                    string               `json:"since"`
+	Until                    string               `json:"until"`
+	Totals                   ActivityCounts       `json:"totals"`
+	Agents                   []NamedCount         `json:"agents"`
+	FilesRead                []string             `json:"files_read"`
+	FilesChanged             []string             `json:"files_changed"`
+	SensitiveAccesses        []StoredEvent        `json:"sensitive_accesses"`
+	Attention                []AttentionFinding   `json:"attention"`
+	CommandExecutions        int                  `json:"command_executions"`
+	CommandSuccesses         int                  `json:"command_successes"`
+	CommandFailures          int                  `json:"command_failures"`
+	CommandUnknowns          int                  `json:"command_unknowns"`
+	MCPActivity              []NamedCount         `json:"mcp_activity"`
+	Developers               []NamedCount         `json:"developers"`
+	Branches                 []NamedCount         `json:"branches"`
+	Repository               string               `json:"repository,omitempty"`
+	FileEntries              []ReportPath         `json:"file_entries,omitempty"`
+	RepositoryGroups         []RepositoryReport   `json:"repository_groups,omitempty"`
+	PathEvidence             []ReportPathEvidence `json:"-"`
+	RepositoryFilesRead      []string             `json:"repository_files_read"`
+	ExternalFilesRead        []string             `json:"external_files_read"`
+	RepositoryFilesChanged   []string             `json:"repository_files_changed"`
+	ExternalFilesChanged     []string             `json:"external_files_changed"`
 }
 
 // ReportPathEvidence retains the captured working directory needed to resolve

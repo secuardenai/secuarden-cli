@@ -3,6 +3,7 @@
 package chain
 
 import (
+	"github.com/secuardenai/secuarden-cli/internal/attestation"
 	"path/filepath"
 	"strings"
 
@@ -28,11 +29,12 @@ type Entry struct {
 }
 
 type Report struct {
-	Repository string  `json:"repository"`
-	Base       string  `json:"base"`
-	Head       string  `json:"head"`
-	Integrity  string  `json:"integrity"`
-	Entries    []Entry `json:"entries"`
+	ConfigurationAttestation *attestation.Report `json:"configuration_attestation,omitempty"`
+	Repository               string              `json:"repository"`
+	Base                     string              `json:"base"`
+	Head                     string              `json:"head"`
+	Integrity                string              `json:"integrity"`
+	Entries                  []Entry             `json:"entries"`
 }
 
 // Build reads the local capture database and the commits between base and head.

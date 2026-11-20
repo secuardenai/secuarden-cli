@@ -345,3 +345,12 @@ for setup or hook installation, because hooks store the executable's path.
 ## License
 
 [Apache 2.0](LICENSE). Built by [Secuarden](https://secuarden.ai).
+
+## Capture configuration attestation
+
+New setup enables configuration attestation by default. Deviations, restorations,
+disabling, and observation gaps remain in a separate local checksum history.
+Run `secuarden attestation watch` for observation independent of agent hooks;
+`secuarden attestation disable` stops checks without removing history.
+See [configuration attestation](docs/configuration-attestation.md) for scope,
+controls, baseline upgrades, reporting, and limitations.

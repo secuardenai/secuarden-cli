@@ -63,6 +63,11 @@ func runChain(cmd *cobra.Command, repo, base, baseRef, head string, asJSON, seal
 	if err != nil {
 		return err
 	}
+	attestationReport := currentAttestation()
+	report.ConfigurationAttestation = &attestationReport
+	if attestationReport.Error != "" && seal {
+		return fmt.Errorf("cannot seal unreadable configuration history: %s", attestationReport.Error)
+	}
 	if asJSON && !seal {
 		return writeJSON(cmd.OutOrStdout(), report)
 	}
@@ -95,6 +100,9 @@ func runChain(cmd *cobra.Command, repo, base, baseRef, head string, asJSON, seal
 func writeChainText(w io.Writer, report *chain.Report) {
 	fmt.Fprintf(w, "Chain checksum %s..%s\n", shortID(report.Base), shortID(report.Head))
 	fmt.Fprintln(w, "Local record of what this machine captured. This is not a SaaS seal.")
+	if report.ConfigurationAttestation != nil {
+		writeAttestation(w, *report.ConfigurationAttestation)
+	}
 	if len(report.Entries) == 0 {
 		fmt.Fprintln(w, "No captured edits in this repository for the selected range.")
 		return

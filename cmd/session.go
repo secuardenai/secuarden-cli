@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/secuardenai/secuarden-cli/internal/attestation"
 	"github.com/secuardenai/secuarden-cli/internal/storage"
 	"github.com/spf13/cobra"
 )
@@ -42,9 +43,14 @@ func runSession(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	configuration := currentAttestation()
 	if sessionJSON {
-		return writeJSON(cmd.OutOrStdout(), session)
+		return writeJSON(cmd.OutOrStdout(), struct {
+			*storage.SessionInvestigation
+			ConfigurationAttestation attestation.Report `json:"configuration_attestation"`
+		}{session, configuration})
 	}
+	writeAttestation(cmd.OutOrStdout(), configuration)
 	if sessionFull {
 		return renderSessionFull(cmd.OutOrStdout(), session)
 	}

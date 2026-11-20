@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/secuardenai/secuarden-cli/internal/attestation"
 	"github.com/secuardenai/secuarden-cli/internal/events"
 	"github.com/secuardenai/secuarden-cli/internal/storage"
 )
@@ -145,5 +146,27 @@ func TestDashboardTimeFilterValidation(t *testing.T) {
 	end, err := time.Parse(time.RFC3339, got.PeriodEnd)
 	if err != nil || !start.Before(end) {
 		t.Fatalf("invalid period: %+v", got)
+	}
+}
+
+func TestDashboardAttestationIsExplicitAndRetainsHistory(t *testing.T) {
+	db, plain := testServer(t)
+	request := httptest.NewRequest("GET", "/api/overview", nil)
+	recorder := httptest.NewRecorder()
+	plain.ServeHTTP(recorder, request)
+	if strings.Contains(recorder.Body.String(), "configuration_attestation") {
+		t.Fatal("alternate evidence source inherited local configuration")
+	}
+	configured := New(db, "test").WithAttestation(func() attestation.Report {
+		return attestation.Report{Status: "matches", History: []attestation.Event{{Kind: "deviation"}, {Kind: "restored"}}}
+	}).Handler()
+	recorder = httptest.NewRecorder()
+	configured.ServeHTTP(recorder, request)
+	var result overview
+	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.ConfigurationAttestation == nil || len(result.ConfigurationAttestation.History) != 2 {
+		t.Fatal("dashboard lost restored deviation history")
 	}
 }

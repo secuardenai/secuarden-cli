@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/secuardenai/secuarden-cli/internal/attestation"
 	"github.com/secuardenai/secuarden-cli/internal/storage"
 )
 
@@ -17,18 +18,20 @@ import (
 var assets embed.FS
 
 type Server struct {
-	db        *storage.DB
-	version   string
-	static    http.Handler
-	indexHTML []byte
+	db          *storage.DB
+	version     string
+	static      http.Handler
+	indexHTML   []byte
+	attestation func() attestation.Report
 }
 
 type overview struct {
-	PeriodStart string                 `json:"period_start"`
-	PeriodEnd   string                 `json:"period_end"`
-	Version     string                 `json:"version"`
-	GeneratedAt string                 `json:"generated_at"`
-	Summary     *storage.StatusSummary `json:"summary"`
+	ConfigurationAttestation *attestation.Report    `json:"configuration_attestation,omitempty"`
+	PeriodStart              string                 `json:"period_start"`
+	PeriodEnd                string                 `json:"period_end"`
+	Version                  string                 `json:"version"`
+	GeneratedAt              string                 `json:"generated_at"`
+	Summary                  *storage.StatusSummary `json:"summary"`
 }
 
 func New(db *storage.DB, version string) *Server {
@@ -41,6 +44,11 @@ func New(db *storage.DB, version string) *Server {
 		panic(err)
 	}
 	return &Server{db: db, version: version, static: http.FileServer(http.FS(staticFS)), indexHTML: index}
+}
+
+func (s *Server) WithAttestation(read func() attestation.Report) *Server {
+	s.attestation = read
+	return s
 }
 
 func (s *Server) Handler() http.Handler {
@@ -60,7 +68,12 @@ func (s *Server) overview(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, err, http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, overview{Version: s.version, GeneratedAt: now.UTC().Format(time.RFC3339), Summary: summary, PeriodStart: dayStart.Format(time.RFC3339), PeriodEnd: dayStart.AddDate(0, 0, 1).Format(time.RFC3339)})
+	var configuration *attestation.Report
+	if s.attestation != nil {
+		r := s.attestation()
+		configuration = &r
+	}
+	writeJSON(w, overview{ConfigurationAttestation: configuration, Version: s.version, GeneratedAt: now.UTC().Format(time.RFC3339), Summary: summary, PeriodStart: dayStart.Format(time.RFC3339), PeriodEnd: dayStart.AddDate(0, 0, 1).Format(time.RFC3339)})
 }
 
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {

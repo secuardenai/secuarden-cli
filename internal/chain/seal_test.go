@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/secuardenai/secuarden-cli/internal/attestation"
 	"github.com/secuardenai/secuarden-cli/internal/changereceipt"
 	"github.com/secuardenai/secuarden-cli/internal/config"
 )
@@ -40,6 +41,12 @@ func TestSealAcceptedByServer(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&envelope); err != nil {
 				t.Error(err)
 			}
+			var payload struct {
+				Configuration *attestation.Report `json:"configuration_attestation"`
+			}
+			if err := json.Unmarshal([]byte(envelope["payload"]), &payload); err != nil || payload.Configuration == nil || payload.Configuration.Head != "test-attestation-head" {
+				t.Error("configuration history is not in signed payload")
+			}
 			signature, err := base64.StdEncoding.Strict().DecodeString(envelope["signature"])
 			if err != nil || !ed25519.Verify(public, append([]byte(ProtocolVersion+"\n"), []byte(envelope["payload"])...), signature) {
 				t.Errorf("seal signature did not verify")
@@ -57,7 +64,7 @@ func TestSealAcceptedByServer(t *testing.T) {
 	root := t.TempDir()
 	gitCmd(t, root, "init", "-q", "-b", "main")
 	gitCmd(t, root, "remote", "add", "origin", "https://github.com/owner/repo.git")
-	report := &Report{Repository: root, Base: "abc", Head: "def", Integrity: "checksum"}
+	report := &Report{Repository: root, Base: "abc", Head: "def", Integrity: "checksum", ConfigurationAttestation: &attestation.Report{Status: "disabled", Head: "test-attestation-head"}}
 	seal, err := SealReport(context.Background(), &config.Config{SyncEnabled: true, APIKey: "test-secret", APIURL: server.URL}, report)
 	if err != nil {
 		t.Fatal(err)

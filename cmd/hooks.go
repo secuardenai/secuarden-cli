@@ -14,6 +14,9 @@ func init() {
 		Long: "Refresh existing Secuarden hooks, preserving unrelated hooks and repository configuration. Codex may require review of changed hook commands; this command does not modify hook trust approvals.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if r := currentAttestation(); r.Error != "" {
+				return fmt.Errorf("configuration attestation: %s", r.Error)
+			}
 			if agent.HooksInstalled() {
 				if err := agent.InstallHooks(); err != nil {
 					return err
@@ -26,6 +29,7 @@ func init() {
 				}
 				fmt.Fprintln(cmd.OutOrStdout(), "Codex hooks refreshed. Review changed hook commands in Codex if prompted.")
 			}
+			writeAttestation(cmd.OutOrStdout(), currentAttestation())
 			return nil
 		},
 	})

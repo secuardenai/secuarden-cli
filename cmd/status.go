@@ -131,6 +131,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	case activeClaude && activeCodex:
 		statusAgent = "Claude Code + Codex"
 	}
+	writeAttestation(cmd.OutOrStdout(), currentAttestation())
 	return renderStatus(cmd.OutOrStdout(), statusView{
 		CaptureActive: activeClaude || activeCodex, Agent: statusAgent,
 		DatabasePath: dbPath, DatabaseSize: fileSize(dbPath), Sync: syncMode,
