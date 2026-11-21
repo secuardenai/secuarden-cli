@@ -2,7 +2,7 @@
 title: "Install Secuarden"
 description: "Install a released CLI or build this development checkout."
 banner:
-  content: "Development preview — starter documentation, not yet release-validated."
+  content: "v0.8.1 release candidate — publication pending."
 ---
 
 ## Install a release
@@ -13,8 +13,11 @@ secuarden version
 secuarden --help
 ```
 
-The installer selects a published release. Commands described in this development
-preview may not yet be present in that release.
+The installer currently selects published v0.8.0, which lacks `attestation` and
+`chain`. These guides target the v0.8.1 candidate; see [version compatibility](/releases/).
+Supported release binaries are macOS ARM64/AMD64 and Linux AMD64. Linux ARM64
+and Windows binaries are not published. Installation requires write access to
+`/usr/local/bin`; archive checksums are verified before replacement.
 
 ## Build this checkout
 

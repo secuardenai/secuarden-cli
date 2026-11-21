@@ -2,7 +2,7 @@
 title: "Configuration and privacy"
 description: "Understand local data and optional cloud operations."
 banner:
-  content: "Development preview — starter documentation, not yet release-validated."
+  content: "v0.8.1 release candidate — publication pending."
 ---
 
 ## Local by default
@@ -19,6 +19,14 @@ sync and explicit SaaS seals are separate features.
 
 Keep API keys outside the worktree. Omitting an API key during later setup does
 not necessarily disable an already configured integration.
+
+## Capture scope and setup
+
+New installations default to all supported sessions for this OS user. Use
+`secuarden init --repo . --scope repo` to select repository-only capture;
+this is a shared OS-user setting, not a per-shell override. Setup preserves an
+existing scope unless explicitly changed. New setups enable configuration
+attestation by default; an existing explicit disable is preserved.
 
 ## Evidence can be sensitive
 

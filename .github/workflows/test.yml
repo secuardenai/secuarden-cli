@@ -22,3 +22,8 @@ jobs:
         env:
           GOPROXY: "off"
         run: go test ./...
+
+      - name: Validate documented commands
+        run: |
+          go build -o "$RUNNER_TEMP/secuarden" ./cmd/secuarden
+          python3 scripts/check-release-commands.py "$RUNNER_TEMP/secuarden"

@@ -2,7 +2,7 @@
 title: "Verify and export"
 description: "Distinguish recorded integrity from delivery and configuration."
 banner:
-  content: "Development preview — starter documentation, not yet release-validated."
+  content: "v0.8.1 release candidate — publication pending."
 ---
 
 ## Verify stored activity
@@ -13,7 +13,9 @@ secuarden verify --all
 ```
 
 Stored-chain verification checks recorded evidence. It cannot establish that every
-agent action was captured.
+agent action was captured. It verifies stored event chains and session metadata,
+not the separate experimental edit-revision and posture-finding tables or a
+Git commit association. Partial capture can coexist with valid hashes.
 
 ## Verify configuration history
 

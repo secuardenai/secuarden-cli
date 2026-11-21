@@ -2,7 +2,7 @@
 title: "Embedded capture contracts"
 description: "Understand the minimum hook configuration defined by Secuarden."
 banner:
-  content: "Development preview — starter documentation, not yet release-validated."
+  content: "v0.8.1 release candidate — publication pending."
 ---
 
 ## The contract lives in the binary
