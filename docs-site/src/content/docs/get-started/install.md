@@ -31,5 +31,5 @@ path; do not use `go run` to install hooks. `make install` copies the binary to
 
 ## Next step
 
-Open a local Git repository and choose the [Claude Code](/secuarden-cli/agents/claude-code/) or
-[Codex](/secuarden-cli/agents/codex/) setup guide. Installation alone does not produce activity evidence.
+Open a local Git repository and choose the [Claude Code](/agents/claude-code/) or
+[Codex](/agents/codex/) setup guide. Installation alone does not produce activity evidence.
