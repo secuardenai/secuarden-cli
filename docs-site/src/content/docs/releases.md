@@ -1,33 +1,49 @@
 ---
 title: "Versions and upgrades"
-description: "Keep documentation aligned with the CLI you actually installed."
+description: "Commands available in published releases and the corrective release candidate."
 banner:
-  content: "Development preview — starter documentation, not yet release-validated."
+  content: "v0.8.1 release candidate — publication pending."
 ---
 
-## Development preview
+## Version compatibility
 
-These starter pages describe work in the development checkout. They are not a
-published release promise. Check `secuarden version` and command help before
-following development-only instructions.
+These guides target the **v0.8.1 release candidate**. It is not published yet.
 
-[Published CLI releases](https://github.com/secuardenai/secuarden-cli/releases)
-remain the source for downloadable releases and their notes.
+| Version | Core capture and reports | Configuration attestation | Experimental chain |
+| --- | --- | --- | --- |
+| v0.7.0 | Available | Unavailable | Unavailable |
+| Published v0.8.0 | Available | Unavailable | Unavailable |
+| v0.8.1 candidate | Available | Available | Available |
 
-## Upgrade workflow
+The published v0.8.0 tag points to the same source commit as v0.7.0
+(`6e8a280`). Its version label changed, but it does not contain the later
+attestation and chain implementation. Do not use the version number alone as
+proof those commands are present. Existing published tags will remain unchanged.
 
-Install the intended CLI release, then refresh hooks using that binary:
+[Published releases](https://github.com/secuardenai/secuarden-cli/releases)
+are the source for downloadable binaries. The installer selects the latest
+published release, so it cannot install this candidate before publication.
+
+## Upgrade after the corrective release is published
+
+Install the intended release and check its version and commands before refreshing:
 
 ```sh
+secuarden version
+secuarden attestation contracts
+secuarden chain --help
 secuarden hooks refresh
 secuarden status
+secuarden attestation check
 ```
 
-Repeat live verification. For versions with contract attestation, run
-`secuarden attestation check` and inspect the recorded contract transition.
+If attestation reports `not_configured`, enable it for your configured agents.
+An explicit previous disable remains disabled unless you enable it again.
+Repeat the [fresh-session live check](/get-started/first-session/) after refreshing
+hooks. Contract checks establish configuration, not runtime delivery.
 
-## Documentation publishing
+## Validation boundary
 
-Release-specific guides and an upgrade compatibility matrix will be added as the
-site is prepared for production. This scaffold is intentionally marked as a
-preview and excluded from search-engine indexing.
+Automated tests and command-help checks do not substitute for a fresh live agent
+session. SaaS seal acceptance, platform-specific runtime trust, and complete
+capture must not be inferred from a passing local build.

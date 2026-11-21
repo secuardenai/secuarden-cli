@@ -2,7 +2,7 @@
 title: "Reports and dashboard"
 description: "Inspect recorded activity without leaving the machine."
 banner:
-  content: "Development preview — starter documentation, not yet release-validated."
+  content: "v0.8.1 release candidate — publication pending."
 ---
 
 ## Summarize activity

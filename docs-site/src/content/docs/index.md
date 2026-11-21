@@ -2,7 +2,7 @@
 title: "Secuarden CLI documentation"
 description: "Local evidence for AI-assisted development."
 banner:
-  content: "Development preview — starter documentation, not yet release-validated."
+  content: "v0.8.1 release candidate — publication pending."
 ---
 
 Secuarden records activity from supported coding agents so you can inspect changes,
@@ -31,5 +31,5 @@ Secuarden records what supported integrations deliver. Configuration compliance,
 live delivery, and stored-record integrity are different checks. Missing evidence
 is not proof that no activity occurred.
 
-This site is the initial documentation scaffold. See [versions and upgrades](/releases/)
-before using development commands with an installed release.
+These guides target the v0.8.1 candidate. See [versions and upgrades](/releases/)
+for the published v0.8.0 compatibility issue and release availability.

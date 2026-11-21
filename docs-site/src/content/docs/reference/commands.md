@@ -1,12 +1,13 @@
 ---
 title: "CLI command reference"
-description: "An initial command map; the installed binary provides authoritative flags."
+description: "Command map for the v0.8.1 candidate."
 banner:
-  content: "Development preview — starter documentation, not yet release-validated."
+  content: "v0.8.1 release candidate — publication pending."
 ---
 
 Use `secuarden --help` and `secuarden COMMAND --help` for the version you installed.
-This page is a navigation scaffold, not yet a generated flag-by-flag reference.
+This is a command overview, not an exhaustive flag reference. See
+[version compatibility](/releases/) before using `attestation` or `chain`.
 
 | Command | Purpose |
 | --- | --- |
@@ -15,7 +16,7 @@ This page is a navigation scaffold, not yet a generated flag-by-flag reference.
 | `events` | Browse captured event records. |
 | `session ID` | Investigate a captured session. |
 | `report` | Summarize evidence for a repository and time window. |
-| `chain` | Connect captured prompts and edits to a commit range. |
+| `chain` | Experimentally associate captured edits with commits by path. |
 | `serve` | Open a local evidence dashboard. |
 | `verify-live` | Check a real runtime capture round-trip. |
 | `verify` | Verify stored activity checksums. |

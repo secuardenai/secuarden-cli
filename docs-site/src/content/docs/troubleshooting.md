@@ -2,7 +2,7 @@
 title: "Capture and setup troubleshooting"
 description: "Resolve common setup states before interpreting evidence."
 banner:
-  content: "Development preview — starter documentation, not yet release-validated."
+  content: "v0.8.1 release candidate — publication pending."
 ---
 
 ## Attestation reports `not_configured`

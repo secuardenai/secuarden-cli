@@ -49,8 +49,9 @@ slashes. Keep commands grounded in the intended CLI release.
 
 Existing repository `docs/` files remain engineering references during migration.
 Do not blindly copy them: audit stale product claims and move user-facing content
-into the website deliberately. CLI-reference generation and release versioning
-are follow-up work, not implemented by this scaffold.
+into the website deliberately. The version compatibility page targets the v0.8.1 candidate. Command-help checks
+run in CI and before releases through `scripts/check-release-commands.py`; this
+is not exhaustive flag-reference generation or live-agent acceptance.
 
 ## GitHub Pages deployment
 
@@ -75,8 +76,8 @@ merging this PR alone cannot register the domain. The existing build/deploy
 workflow remains unchanged.
 
 GitHub Pages does not process `public/_headers` (retained for other static hosts).
-The HTML noindex metadata and robots.txt remain in place while scaffold content
-is reviewed; publication does not remove those indexing safeguards.
+The HTML noindex metadata and robots.txt remain in place until release validation and indexing approval
+are complete; publication does not remove those indexing safeguards.
 
 ## Before production publication
 
@@ -88,3 +89,10 @@ is reviewed; publication does not remove those indexing safeguards.
 - Remove `noindex` from `astro.config.mjs` and `public/_headers`, and update
   `public/robots.txt` to permit indexing. Keep previews excluded separately.
 - Verify the GitHub Pages deployment, navigation, assets, and search.
+
+## Corrective release preparation
+
+See `../docs/releases/v0.8.1.md` for the release-tag discrepancy, validation
+boundaries, and approval sequence. Do not remove candidate notices or publish
+these preparation changes until the intended release and website updates are
+approved. Confirm the downloadable artifact, not only a locally built binary.

@@ -23,6 +23,11 @@ jobs:
       - name: Run tests before publishing
         run: go test ./...
 
+      - name: Verify the release command surface
+        run: |
+          go build -o "$RUNNER_TEMP/secuarden" ./cmd/secuarden
+          python3 scripts/check-release-commands.py "$RUNNER_TEMP/secuarden"
+
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
