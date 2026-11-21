@@ -37,4 +37,4 @@ Open `http://127.0.0.1:8743`. The dashboard is a local, read-only evidence brows
 
 Configuration attestation includes current contract results and historical
 deviations. Its history is OS-user-wide; it does not prove a particular commit
-was affected. See [configuration monitoring](/integrity/monitoring/).
+was affected. See [configuration monitoring](/secuarden-cli/integrity/monitoring/).

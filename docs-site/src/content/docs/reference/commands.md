@@ -34,4 +34,4 @@ secuarden attestation watch --help
 ```
 
 `attestation check` returns nonzero unless the contract is satisfied. This includes
-unconfigured, disabled and unknown states. See [troubleshooting](/troubleshooting/).
+unconfigured, disabled and unknown states. See [troubleshooting](/secuarden-cli/troubleshooting/).

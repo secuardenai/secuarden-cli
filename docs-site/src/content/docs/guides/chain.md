@@ -27,5 +27,5 @@ machine owner from rewriting records and recomputing them.
 acceptance. It is not an offline operation. Review configuration and the upload
 contract before enabling cloud features.
 
-See [configuration and privacy](/reference/configuration/) and
-[verification](/integrity/verification/).
+See [configuration and privacy](/secuarden-cli/reference/configuration/) and
+[verification](/secuarden-cli/integrity/verification/).

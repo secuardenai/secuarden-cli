@@ -32,4 +32,4 @@ violations. A missing hook cannot be accepted by taking a new baseline.
 Contract satisfaction concerns shared user-level hook configuration. It does not
 certify runtime trust, project overrides, capture delivery or storage health.
 
-Continue with [monitoring](/integrity/monitoring/) to retain configuration history.
+Continue with [monitoring](/secuarden-cli/integrity/monitoring/) to retain configuration history.

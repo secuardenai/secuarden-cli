@@ -2,7 +2,8 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
 export default defineConfig({
-  site: 'https://cli-docs.secuarden.ai',
+  site: 'https://secuardenai.github.io',
+  base: '/secuarden-cli',
   output: 'static',
   trailingSlash: 'always',
   integrations: [

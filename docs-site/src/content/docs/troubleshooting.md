@@ -37,4 +37,4 @@ baseline; repair the integration so it satisfies the embedded contract.
 ## Configuration restored, but an old deviation remains
 
 This is expected. Restoration appends a new event and retains the earlier period
-of uncertainty. See [configuration monitoring](/integrity/monitoring/).
+of uncertainty. See [configuration monitoring](/secuarden-cli/integrity/monitoring/).

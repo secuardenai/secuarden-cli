@@ -25,7 +25,7 @@ secuarden init --repo . --agent codex --enable-codex-hooks
 ```
 
 Complete any trust approval in Codex, then start a new conversation. Follow
-[your first captured session](/get-started/first-session/).
+[your first captured session](/secuarden-cli/get-started/first-session/).
 
 ## Check delivery
 
