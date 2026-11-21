@@ -78,7 +78,7 @@ func TestClaudePostToolFixturesRetainOutcomeBehavior(t *testing.T) {
 		name, fixture, outcome, execution string
 	}{
 		{name: "successful command", fixture: filepath.Join("..", "..", "test", "fixtures", "posttooluse_bash.json"), outcome: "success", execution: "completed"},
-		{name: "failed command", fixture: filepath.Join("..", "..", "docs", "demo", "fixtures", "06-command-post.json"), outcome: "error", execution: "failed"},
+		{name: "failed command", fixture: filepath.Join("..", "..", "test", "fixtures", "claude-replay", "06-command-post.json"), outcome: "error", execution: "failed"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -109,7 +109,7 @@ func TestClaudePostToolFixturesRetainOutcomeBehavior(t *testing.T) {
 
 func TestDemoFixtureCaptureContainsRequiredEvidence(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	fixtures := filepath.Join("..", "..", "docs", "demo", "fixtures")
+	fixtures := filepath.Join("..", "..", "test", "fixtures", "claude-replay")
 	steps := []struct{ phase, name string }{
 		{"session-start", "01-session-start.json"},
 		{"pre-tool-use", "02-read.json"},
@@ -161,7 +161,7 @@ func TestMetadataOnlyOmitsContentFromPersistence(t *testing.T) {
 	if err := config.Save(&config.Config{PrivacyMode: "metadata_only"}); err != nil {
 		t.Fatal(err)
 	}
-	replayHookFixture(t, "post-tool-use", filepath.Join("..", "..", "docs", "demo", "fixtures", "06-command-post.json"))
+	replayHookFixture(t, "post-tool-use", filepath.Join("..", "..", "test", "fixtures", "claude-replay", "06-command-post.json"))
 	dbPath, _ := storage.DefaultDBPath()
 	db, err := storage.Open(dbPath)
 	if err != nil {

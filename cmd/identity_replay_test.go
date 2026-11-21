@@ -87,7 +87,7 @@ func TestDemoReplayPreservesGitIdentity(t *testing.T) {
 	}
 	var session string
 	for i, f := range fixtures {
-		raw, err := os.ReadFile(filepath.Join("..", "docs", "demo", "fixtures", f.file))
+		raw, err := os.ReadFile(filepath.Join("..", "test", "fixtures", "claude-replay", f.file))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -145,7 +145,7 @@ func TestDemoReplayPreservesGitIdentity(t *testing.T) {
 	run(nil, true, "init", "--repo", repo, "--agent", "claude-code", "--receipt-mode", "explicit")
 	run(nil, false, "verify-live", "--repo", repo, "--agent", "claude-code")
 	for i, fixture := range fixtures[:3] {
-		raw, err := os.ReadFile(filepath.Join("..", "docs", "demo", "fixtures", fixture.file))
+		raw, err := os.ReadFile(filepath.Join("..", "test", "fixtures", "claude-replay", fixture.file))
 		if err != nil {
 			t.Fatal(err)
 		}
