@@ -31,5 +31,5 @@ secuarden report --json
 secuarden bom --since 30d
 ```
 
-Treat exported evidence as sensitive. Review [configuration and privacy](/secuarden-cli/reference/configuration/)
-before sharing it. Use [the command reference](/secuarden-cli/reference/commands/) for flags and scope.
+Treat exported evidence as sensitive. Review [configuration and privacy](/reference/configuration/)
+before sharing it. Use [the command reference](/reference/commands/) for flags and scope.

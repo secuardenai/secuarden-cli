@@ -1,7 +1,7 @@
 # Secuarden CLI documentation site
 
 An Astro Starlight documentation site published from `main` to
-**https://secuardenai.github.io/secuarden-cli/** using GitHub Pages.
+**https://cli-docs.secuarden.ai/** using GitHub Pages.
 
 ## Develop
 
@@ -44,7 +44,7 @@ docs-site/
 ```
 
 Add a Markdown/MDX page with `title` and `description` frontmatter, then add it to
-`sidebar` in `astro.config.mjs`. Use project-root-relative internal links beginning with `/secuarden-cli/` and trailing
+`sidebar` in `astro.config.mjs`. Use root-relative internal links beginning with `/` and trailing
 slashes. Keep commands grounded in the intended CLI release.
 
 Existing repository `docs/` files remain engineering references during migration.
@@ -54,17 +54,25 @@ are follow-up work, not implemented by this scaffold.
 
 ## GitHub Pages deployment
 
-In repository Settings → Pages, select **GitHub Actions** as the build source.
+In repository Settings → Pages, select **GitHub Actions** as the build source
+and set **Custom domain** to `cli-docs.secuarden.ai`. Keep its DNS CNAME pointing
+to `secuardenai.github.io` (without a repository path). Enable HTTPS once GitHub
+has validated the domain and provisioned its certificate.
 The Documentation workflow checks and builds pull requests without deploying them.
 Pushes to `main` that change the site or workflow publish after the build and
 internal link checks succeed. To redeploy manually, run the Documentation workflow
 on `main` from the Actions tab.
 
 The deploy job uses the `github-pages` environment with `pages: write` and
-`id-token: write`; no personal access token or custom DNS is required.
-The organization root URL is a separate site; these docs use `/secuarden-cli/`.
-Astro's `site` and `base`, content links, and the link checker must agree on this
-project path. Search assets and navigation are generated under that base.
+`id-token: write`; no personal access token is required in the workflow.
+The custom domain serves the docs at `/`, not `/secuarden-cli/`. Astro's `site`,
+content links, and the link checker target that root. Search assets and navigation
+are generated under `/`.
+
+The repository Pages custom-domain setting is required separately from DNS and
+source changes. GitHub Actions deployments do not configure it from a CNAME file;
+merging this PR alone cannot register the domain. The existing build/deploy
+workflow remains unchanged.
 
 GitHub Pages does not process `public/_headers` (retained for other static hosts).
 The HTML noindex metadata and robots.txt remain in place while scaffold content

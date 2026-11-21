@@ -2,8 +2,8 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { resolve, relative } from 'node:path';
 const root = resolve('dist');
-const origin = 'https://secuardenai.github.io';
-const base = '/secuarden-cli/';
+const origin = 'https://cli-docs.secuarden.ai';
+const base = '/';
 async function* htmlFiles(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const path = resolve(directory, entry.name);

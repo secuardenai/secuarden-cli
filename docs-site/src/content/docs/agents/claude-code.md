@@ -14,7 +14,7 @@ secuarden init --repo . --agent claude-code
 ```
 
 Setup installs Secuarden hooks for the current OS user. Start a new agent session
-and follow [your first captured session](/secuarden-cli/get-started/first-session/).
+and follow [your first captured session](/get-started/first-session/).
 
 ## After a CLI upgrade
 
@@ -28,5 +28,5 @@ changing the integration.
 
 ## Capture configuration
 
-The [embedded contract](/secuarden-cli/integrity/contracts/) checks required shared hook
+The [embedded contract](/integrity/contracts/) checks required shared hook
 configuration. Project overrides and actual runtime delivery are outside that check.
