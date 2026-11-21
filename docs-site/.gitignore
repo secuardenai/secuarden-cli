@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.astro/
+.wrangler/
+.env
+.env.*
+
+# The repository-wide reference/ ignore is for research files, not these docs.
+!src/content/docs/reference/
+!src/content/docs/reference/**

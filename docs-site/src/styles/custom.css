@@ -1,0 +1,14 @@
+:root {
+  --sl-color-accent-low: #102b42;
+  --sl-color-accent: #3294db;
+  --sl-color-accent-high: #b5dcfa;
+  --sl-font: ui-sans-serif, system-ui, sans-serif;
+  --sl-font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+  --sl-content-width: 48rem;
+}
+:root[data-theme='light'] {
+  --sl-color-accent-low: #e0f0ff;
+  --sl-color-accent: #095e9e;
+  --sl-color-accent-high: #123f62;
+}
+.sl-markdown-content pre { border-radius: 0.5rem; }
