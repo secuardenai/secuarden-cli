@@ -27,6 +27,7 @@ var gateCmd = &cobra.Command{
 		}
 		cmd.SilenceUsage = true
 		cmd.SilenceErrors = true
+		writeAttestation(cmd.OutOrStdout(), currentAttestation())
 		path, err := storage.DefaultDBPath()
 		if err != nil {
 			return err

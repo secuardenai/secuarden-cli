@@ -27,9 +27,11 @@ var (
 	initApproveRepo      bool
 	initEnableCodexHooks bool
 	initRepo             string
+	initAttestation      bool
 )
 
 func init() {
+	initCmd.Flags().BoolVar(&initAttestation, "attestation", true, "Enable configuration attestation on first setup; preserve existing choice unless explicitly set")
 	initCmd.Flags().StringVar(&initRepo, "repo", "", "Explicit Git repository to configure (required; use . for the current repository)")
 	_ = initCmd.MarkFlagRequired("repo")
 	initCmd.Flags().StringVar(&initSyncAPIKey, "api-key", "", "Secuarden API key for this repository only — enables SaaS sync")
@@ -96,6 +98,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 	setupRepository, err := repository.ResolveCurrent(initRepo)
 	if err != nil {
 		return fmt.Errorf("per-repository setup requires a Git repository; pass --repo PATH: %w", err)
+	}
+	// Record any existing deviation before setup repairs hooks or changes scope.
+	if r := currentAttestation(); r.Error != "" {
+		return fmt.Errorf("configuration attestation: %s", r.Error)
 	}
 	if binary, err := os.Executable(); err == nil {
 		if found, err := exec.LookPath("secuarden"); err != nil {
@@ -262,6 +268,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 	db.Close()
 	fmt.Printf("✓ Database created at %s\n", dbPath)
+
+	if err := initializeAttestation(initAttestation, cmd.Flags().Changed("attestation")); err != nil {
+		return fmt.Errorf("configuration attestation setup: %w", err)
+	}
+	fmt.Fprintln(cmd.OutOrStdout(), "Configuration attestation: use `secuarden attestation status`; run `secuarden attestation watch` for independent periodic observation.")
 
 	// 5. Capture developer identity
 	dev := identity.Capture()

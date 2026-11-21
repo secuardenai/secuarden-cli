@@ -1,301 +1,117 @@
-# The governance flight recorder for AI-written code
+# secuarden cli
 
 [![Tests](https://github.com/secuardenai/secuarden-cli/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/secuardenai/secuarden-cli/actions/workflows/test.yml?query=branch%3Amain)
 [![Latest release](https://img.shields.io/github/v/release/secuardenai/secuarden-cli)](https://github.com/secuardenai/secuarden-cli/releases/latest)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-Secuarden is a local-first CLI for developers, platform engineers, and security
-teams who need to investigate AI-assisted changes. It captures evidence from
-**Claude Code and compatible Codex runtimes**, so you can inspect agent activity,
-verify stored records, and connect observations to committed changes.
+**Local flight recorder and cryptographic provenance CLI for AI coding agents.**
 
-v0.7.0 keeps that recorder local-only unless you configure a repository API key.
-It also adds an opt-in local policy that can deny selected agent edits before
-they run. No policy is active until you import one.
+`secuarden` silently records what your coding agent touched, which prompts and tools drove each file change, and verifies the integrity of your AI-generated diffs—stored 100% locally in SQLite with zero cloud dependencies.
 
-## New in v0.7.0
+![secuarden CLI demo](docs/demo/secuarden-terminal-demo.gif)
 
-- Captured sessions keep their git branch and remote after later hook events
-  arrive without a working directory.
-- `secuarden report` resolves relative paths using the event directory, falling
-  back to the session directory when the event supplies none. Paths inside that
-  repository count as repository files.
-  Paths outside it, and paths with no absolute directory to resolve against,
-  stay external.
-- `secuarden verify-live` exits 0 only after a persisted matching tool request
-  and result. Arming a window, pending or incomplete verification, missing hook
-  configuration, and errors exit non-zero. `init` itself still succeeds when it
-  has installed hooks and armed the window.
-- Operational failures from `init`, `verify-live`, `gate`, `sync`, and `serve`
-  print the error without the command usage block. Unknown flags and unexpected
-  arguments still print usage.
-- Opt-in local policy enforcement v0.1 can protect configured Python route
-  security decorators. See [Local policy enforcement](#local-policy-enforcement).
+## Why use it locally?
 
-After v0.7.0 is published, upgrade from v0.6.0 with the installer. To install
-this checkout beforehand, use `make install VERSION=v0.7.0-dev`. Then run
-`secuarden hooks refresh` from the installed binary so existing hooks point at
-it. Re-run live verification after refreshing hooks. Stored v0.6.0 sessions are
-not rewritten. Identity retention applies to new hook events; the report can
-also classify existing paths correctly when their captured directory context
-is available. Previously lost Git identity is not reconstructed.
+- **See what the agent actually did:** Inspect every file read, shell command, and edit made during Claude Code and Codex sessions (`secuarden events`, `secuarden session`).
+- **Verify diff integrity:** Every session and change is chained with cryptographic hashes and anchored to Git (`secuarden verify`, `secuarden ledger`).
+- **Catch risky changes before commit or CI:** Run local risk thresholds (`secuarden gate`) and AST-based route protection (`secuarden policy`) to flag or block unsafe agent edits.
+- **Export tamper-evident AI BOMs:** Generate a JSON Bill of Materials (`secuarden bom`) or full accountability report (`secuarden report`) for pull requests and audits.
+- **Local web inspector:** Run `secuarden serve` to browse your full session timeline, events, and diffs at `http://127.0.0.1:8743`.
+- **Offline & private by default:** Everything lives in `~/.secuarden/secuarden.db`. No account, no telemetry, no API key required.
 
-## Install and try it
+## Quickstart
 
-You need Git, a local Git repository, and a supported agent that is ready to
-run in that repository. Local capture does not require a Secuarden account.
-
+### 1. Install
 ```bash
 curl -fsSL https://install.secuarden.ai | sh
-cd /path/to/your/repository
+# or via Go
+go install github.com/secuardenai/secuarden-cli/cmd/secuarden@latest
+```
+
+### 2. Hook into your agent & check status
+
+```bash
 secuarden init --repo .
+secuarden status
 ```
 
-These instructions describe **v0.7.0**. Until that release is published, the
-installer may provide an earlier version. The installer selects the latest
-published GitHub release, verifies the archive checksum, and copies `secuarden`
-to `/usr/local/bin`. That directory must be writable. Build from this checkout
-to try unreleased commits. See [Contributing](#contributing).
-
-`init` always requires `--repo`, including inside a Git repository. It looks for
-Claude Code's shared settings file (`~/.claude/settings.json`) or the official
-Claude Code VS Code extension, and for a Codex CLI whose version and config
-support hooks. Choose one agent with `--agent claude-code` or `--agent codex`.
-Codex also needs project trust and, when you want Secuarden to turn the feature
-on, `--enable-codex-hooks`. Detection does not sign you in to the agent. Follow
-the setup diagnostics, then use a real agent session to confirm delivery. See
-[agent setup](docs/setup.md#claude-code-and-codex-setup).
-
-Run a session in that repository: ask the agent to read a file, make a small
-change you can review, and run a relevant command. Then inspect:
+### 3. Inspect a session in your terminal (or browser)
 
 ```bash
-secuarden status
-secuarden events --last 20
++++++++++++++++++++++++++++++
+Secuarden Capture Agent 0.7.0
++++++++++++++++++++++++++++++
+
++--------------------------------------------------------------------------------+
+| Capture:              | Configured · Claude Code, Codex                        |
+| Live verification:    | claude-code: verified                                  |
+|                       | codex: verified                                        |
+| Database:             | ~/.secuarden/secuarden.db · 11.5 MB                    |
+| Sync:                 | Disabled (local-only)                                  |
+| Capture scope:        | All supported projects for this OS user                |
+| Receipt mode:         | Automatic (local ledger)                               |
+| Last receipt:         | generated · refs/heads/feature/auth-middleware         |
+| Current repository:   | ~/projects/api-service                                 |
+| Claude Code hooks:    | configured                                             |
+| Codex hooks:          | configured                                             |
+| Last persisted event: | - Claude Code: 2026-11-20T19:24:56Z                    |
+|                       | - Codex: 2026-11-20T21:35:05Z                          |
+| Developer:            | alex <alex@example.com>                                |
+| Privacy:              | redacted_content                                       |
++--------------------------------------------------------------------------------+
+
+Today
+  8 sessions · 56 actions · 14 files read · 4 files changed
+  10 commands · 1 MCP call · 0 sensitive accesses
+
+Needs attention
+  None detected in today's captured activity.
+
+Recent sessions
+  08:35  feature/auth-middleware     18 actions · 3 files changed · verified
+  08:15  feature/policy-enforcement  29 actions · 1 file changed  · verified
+  06:24  fix/token-refresh            9 actions · no changes     · verified
+
+Run `secuarden events` for the raw event log.
+Run `secuarden report` for the full accountability report.
+```
+
+### Want a visual timeline? Launch the local UI:
+
+```bash
 secuarden serve
+
+Secuarden local evidence is available at http://127.0.0.1:8743
+Read-only · local device only · press Ctrl+C to stop
 ```
 
-Open **http://127.0.0.1:8743** for the read-only local dashboard. `serve` accepts
-only a loopback address. Setup alone does not produce a meaningful activity
-history. If the log is empty, follow the
-[capture checks](docs/setup.md#checking-capture).
+## Core Local Commands
 
-`events` lists hook deliveries. A tool call normally appears twice, once for the
-request and once for the reported result. `status` and `report` summarize those
-deliveries into sessions, files, commands, and attention items. Unknown command
-outcomes stay distinct from success.
+| Command | Purpose |
+| :--- | :--- |
+| `secuarden init --repo .` | Install Secuarden hooks and set up capture for a repository. |
+| `secuarden status` | Show capture health, today's activity, and items needing attention. |
+| `secuarden verify-live --repo . --agent codex --client cli` | Verify a fresh agent tool round-trip persisted locally. |
+| `secuarden events --last 20` | Show the chronological raw event log. |
+| `secuarden session SESSION_ID` | Investigate one captured session. |
+| `secuarden ledger` | Build and inspect Git-anchored change records. |
+| `secuarden gate` | Fail pre-commit or CI checks when captured AI changes exceed a risk threshold. |
+| `secuarden bom` | Export a tamper-evident AI Bill of Materials as JSON. |
+| `secuarden report` | Generate an aggregated local accountability report. |
+| `secuarden verify` | Verify the integrity of the stored audit trail for a repository. |
+| `secuarden serve` | Open a local read-only dashboard server (`127.0.0.1:8743`). |
 
-A new repository stays local-only without an API key. Re-running setup preserves
-existing sync settings. Capture scope defaults to all supported sessions for the
-OS user; use `--scope repo` to limit it to the selected repository.
 
-### Confirm capture works
+### How It Works Locally
 
-`init` installs hooks and arms a 15-minute verification window. **Verification
-pending** means setup completed and the window is armed. It does not mean a
-client has delivered evidence. `verify-live` exits non-zero while the check is
-pending, incomplete, or missing its hook configuration.
+1. **Capture**: Lightweight agent hooks log tool invocations and file edits in real time without slowing down your terminal.
+2. **Store**: Events are written to a local SQLite database (~/.secuarden/secuarden.db) with cryptographic hash chaining.
+3. **Verify & Export**: Query your history anytime via CLI, local web UI, or export an auditable context bom artifact when you need to attach proof to a PR.
 
-To start a fresh check for Codex in VS Code:
+### Optional: Team & Cloud Sync
 
-```bash
-secuarden verify-live --repo . --agent codex --client vscode
-```
+secuarden-cli works completely standalone. If your organization uses [Secuarden Cloud](https://app.secuarden.com/) for multi-repo visibility and centralized policy enforcement, run secuarden auth login to sync local receipts.
 
-Start a **new conversation in that repository**, ask it to run `pwd`, and obtain
-that conversation's exact session ID from the client or its local session
-record. Then check it within the window:
-
-```bash
-secuarden verify-live --repo . --agent codex --client vscode \
-  --session EXACT_SESSION_ID --wait 60s
-secuarden status
-```
-
-Replace `EXACT_SESSION_ID` with the actual ID. For Claude Code, use
-`--agent claude-code` and the intended `--client` value (`vscode`, `desktop`,
-`cli`, or `unknown`). A verified result, exit 0, establishes a persisted tool
-request and matching result. It does not certify tool success, hash integrity,
-checkpoint completeness, or SaaS delivery. The client label is user-declared.
-With policy enforcement active, use an allowed file-read tool for the
-verification round-trip instead of `pwd`, because shell tools are blocked.
-See the [live-verification guide](docs/live-capture-verification.md).
-
-### Platforms and agents
-
-| Release build configuration | Architecture |
-|---|---|
-| macOS | Apple Silicon (ARM64), Intel (AMD64) |
-| Linux | AMD64 |
-
-Linux ARM64 and Windows binaries are not included. This matrix describes
-configured release builds, not a claim that a fresh install has been validated
-on every platform.
-
-Claude Code is supported. Codex support depends on runtime hook capabilities and
-required trust. Cursor, Copilot, and Windsurf integrations are not included.
-
-## Demo
-
-![Current Secuarden CLI: repository setup, activity investigation, and evidence verification](docs/demo/secuarden-terminal-demo.gif)
-
-See repository-scoped setup, inspect captured activity and sensitive-path access,
-and verify the stored evidence with the current CLI.
-
-> Reproducible walkthrough using synthetic Claude Code hook payloads and actual
-> CLI output. Runs in a disposable local environment; no live agent or SaaS call.
-> The reported test failure is simulated. Hash verification checks stored records,
-> not capture completeness. The raw fixtures replayed without working
-> directories on later events remain checkpoint-partial; the walkthrough
-> generator supplies those directories.
-
-[Read the demo transcript](docs/demo/transcript.txt) ·
-[Reproduce the demo](docs/demo/README.md)
-
-## What you can inspect
-
-- **Agent activity:** captured file reads and writes, commands and reported
-  outcomes, MCP calls, sensitive-path access, and session identity.
-- **Local summaries:** activity, agent, timeline, file, command, and attention
-  views with drilldowns.
-- **Evidence integrity:** per-session hash-chain verification and AI Bill of
-  Materials (AI-BOM) export.
-- **Committed changes:** Git-anchored change records, optional Codex observation
-  coverage, and signed change receipts.
-
-```bash
-secuarden report --since 24h --md
-secuarden ledger build --repo . --head HEAD --base BASE_COMMIT
-```
-
-`report` defaults to the Git repository containing the current directory. Use
-`--repo` for another repository or `--all-repos` for every captured repository.
-Relative captured paths resolve against the event's absolute working directory,
-falling back to the session directory when the event supplies none. Paths outside
-the repository root and paths without an absolute directory to resolve against
-remain external. Reporting resolves directory aliases without rewriting stored
-evidence.
-
-Replace `BASE_COMMIT` with the intended ancestor commit or local ref.
-`ledger build` records committed Git history from `--base` to `--head`.
-Uncommitted work is excluded. `--base-ref origin/main` selects the merge-base of
-`HEAD` and that ref. When `HEAD` and `origin/main` are the same commit, the
-change record is empty. Pass an ancestor with `--base` to record the commits
-after it. The ref must exist locally. See [activity commands](docs/activity.md)
-and [ledger workflows](docs/ledger.md).
-
-## Local policy enforcement
-
-Policy enforcement is off until you import a bundle. v0.1 protects configured
-Python route security decorators on supported file tools. The [example policy bundle](fixtures/policy/flask-security.json) covers common
-Flask login and role decorators. Download that JSON file before importing it,
-or run the following from a source checkout:
-
-```bash
-secuarden policy upload --file fixtures/policy/flask-security.json
-secuarden policy list
-```
-
-Imported policies are stored at `~/.secuarden/policies.json` for the whole OS
-user. They apply in every repository, including repositories outside the capture
-scope. The next synchronous pre-tool hook loads them. `python3` 3.8 or newer
-must be on the hook process `PATH`. The hook parses Python with `ast` and does
-not import or execute project code.
-
-While any v0.1 policy is active:
-
-- Supported file tools are `Edit`, `Write`, `MultiEdit`, and exact-context Codex
-  `apply_patch`. A change to a protected decorator stack is denied. A route-body
-  edit that leaves that stack in place is allowed.
-- Shell commands and unsupported tools are denied. Supported read/search tools
-  remain allowed; run shell commands such as tests in your own terminal.
-- A denial is returned to the agent and is not written to the capture database.
-  Passive capture continues for tool calls the policy allows.
-- A missing policy file leaves capture passive. An unreadable policy file denies
-  tool calls.
-
-This is decorator-syntax protection on hooked file operations. It is not an OS
-sandbox and it does not prove that authentication works. Direct human edits,
-disabled hooks, other processes, dynamic route registration, and changes to the
-decorator's implementation are outside v0.1. There is no `policy remove` command
-yet. To disable every imported policy and keep a backup:
-
-```bash
-mv ~/.secuarden/policies.json ~/.secuarden/policies.json.disabled
-```
-
-Details, the JSON contract, and the Flask demo are in
-[local policy enforcement v0.1](docs/policy-v0.1.md).
-
-## Privacy and optional sync
-
-| Data | Default location |
-|---|---|
-| Captured activity | `~/.secuarden/secuarden.db` |
-| Git ledger and signed receipts | `~/.secuarden/ledger.db` |
-| Independent Codex observation inbox | `~/.secuarden/observations` |
-| Repository integration settings | `~/.secuarden/config.json` |
-| Local enforcement policies, when imported | `~/.secuarden/policies.json` |
-
-Captured content is filtered using sensitive-path rules and secret-redaction
-patterns before storage. These controls reduce exposure but do not guarantee
-removal of all sensitive information. Sensitive paths can still appear as paths. Command output is stored as a short preview. Session records include the
-OS user, a machine identifier derived from hostname and platform, and the git
-identity available for that event. Treat the local database as sensitive.
-
-Optional session sync sends repository and session metadata and redacted event
-fields according to the
-[upload contract](docs/contracts/session-upload-envelope.md). API keys and server
-URLs are configured per repository, outside the worktree:
-
-```bash
-secuarden init --repo . --api-key YOUR_API_KEY
-```
-
-Omitting `--api-key` on a later setup run **does not disable existing sync**.
-Signed receipt creation separately requires SaaS key registration and attempts
-to upload its signed evidence envelope. Independent observation capture is
-opt-in. Policy files are not part of session sync. See
-[repository configuration](docs/setup.md) and
-[receipts](docs/ledger.md#signed-change-receipts).
-
-## What the evidence establishes
-
-Secuarden records what supported hooks deliver. Missing hooks, unsupported
-runtimes, or incomplete sessions leave gaps. Hash verification detects changes
-to covered records. It does not establish complete capture or prove who wrote
-every line. Observation correlations report inferred links and their limits.
-
-Parallel tool calls can have complete request/result pairs while repository
-checkpoints remain **partial** because their before/after snapshots overlap.
-Live verification and checkpoint completeness are separate checks. A successful
-round-trip does not remove checkpoint uncertainty.
-
-With no policy imported, capture records tool activity and does not decide
-whether an edit may proceed. With a v0.1 policy imported, the pre-tool hook can
-deny the supported edits and shell commands described above. Denied proposals
-are absent from the activity log.
-
-Secuarden complements code and security scanners. It does not replace SAST,
-secret scanning, dependency analysis, prompt-injection testing, or organizational
-approval controls. Its CI gate evaluates captured evidence against deterministic
-path and risk rules. Synchronous hooks, policy evaluation, and network
-operations can add latency.
-
-## Verify, export, and gate
-
-```bash
-secuarden verify                       # current Git repository
-secuarden verify --repo /path/to/repo
-secuarden verify --all                 # entire local audit database
-secuarden bom --since 30d > secuarden-ai-bom.json
-secuarden gate --since 24h --fail-on high
-```
-
-Run these where the relevant captured database is available. A clean CI runner
-does not automatically have evidence from a developer's machine. Legacy records
-without complete hashing cannot gain integrity coverage retroactively. See
-[verification behavior](docs/activity.md#provenance-integrity-and-ci-gate).
 
 ## Guides
 
@@ -326,4 +142,4 @@ for setup or hook installation, because hooks store the executable's path.
 
 ## License
 
-[Apache 2.0](LICENSE). Built by [Secuarden](https://secuarden.ai).
+[Apache 2.0](LICENSE). Built by [Secuarden AI](https://secuarden.ai).

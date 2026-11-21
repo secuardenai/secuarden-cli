@@ -43,3 +43,7 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Local demo setup, recordings, and sample evidence (never commit).
+/.demo/
+docs/demo/Archived-Demos/

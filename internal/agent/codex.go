@@ -14,17 +14,25 @@ import (
 	"time"
 
 	codexadapter "github.com/secuardenai/secuarden-cli/internal/adapters/codex"
+	"github.com/secuardenai/secuarden-cli/internal/capturecontract"
 )
 
-var codexHooks = map[string]map[string]interface{}{
-	"UserPromptSubmit":  {"hooks": []interface{}{map[string]interface{}{"type": "command", "command": "secuarden hook codex-user-prompt-submit", "timeout": 5, "async": true}}},
-	"PreToolUse":        {"matcher": "*", "hooks": []interface{}{map[string]interface{}{"type": "command", "command": "secuarden hook codex-pre-tool-use", "timeout": 5}}},
-	"PermissionRequest": {"matcher": "*", "hooks": []interface{}{map[string]interface{}{"type": "command", "command": "secuarden hook codex-permission-request", "timeout": 5}}},
-	"PostToolUse":       {"matcher": "*", "hooks": []interface{}{map[string]interface{}{"type": "command", "command": "secuarden hook codex-post-tool-use", "timeout": 5, "async": true}}},
-	"SessionStart":      {"hooks": []interface{}{map[string]interface{}{"type": "command", "command": "secuarden hook codex-session-start", "timeout": 5, "async": true}}},
-	"SessionEnd":        {"hooks": []interface{}{map[string]interface{}{"type": "command", "command": "secuarden hook codex-session-end", "timeout": 10}}},
-	"Stop":              {"hooks": []interface{}{map[string]interface{}{"type": "command", "command": "secuarden hook codex-stop", "timeout": 10, "async": true}}},
-}
+var codexHooks = func() map[string]map[string]interface{} {
+	contract, _ := capturecontract.For("codex")
+	result := map[string]map[string]interface{}{}
+	for _, h := range contract.Hooks {
+		hook := map[string]interface{}{"type": "command", "command": "secuarden hook " + h.Handler, "timeout": h.MinTimeout}
+		if !h.Synchronous {
+			hook["async"] = true
+		}
+		matcher := map[string]interface{}{"hooks": []interface{}{hook}}
+		if h.Matcher != "" {
+			matcher["matcher"] = h.Matcher
+		}
+		result[h.Event] = matcher
+	}
+	return result
+}()
 
 type CodexHookState string
 

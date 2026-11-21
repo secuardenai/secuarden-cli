@@ -135,6 +135,11 @@ async function loadEvents() {
 async function load() {
   try {
     const data=await json("/api/overview"); const summary=data.summary;
+    const attestation=data.configuration_attestation;
+    if (attestation) {
+      setText("attestation-status", `${attestation.status} · Last observed: ${attestation.state?.last_observed || "never"} · Configuration only, not delivery. ${attestation.error || ""}`);
+      setText("attestation-history", [...(attestation.state?.contracts || []).map(c=>`Contract: ${c.adapter} v${c.version} (${c.digest})`), ...(attestation.state?.results || []).map(r=>`${r.id}: ${r.status} ${r.reason || ""}`), ...attestation.history.map(e=>`${e.observed_at} ${e.kind} (previous: ${e.previous_observation}) ${(e.state.differences || []).join("; ")}`), attestation.limitation].join("\n"));
+    }
     const now=new Date(data.generated_at); todayBounds={since:data.period_start,until:data.period_end};
     recentSessions=summary.recent_sessions;
     $("version").textContent=`Secuarden ${data.version}`;

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/secuardenai/secuarden-cli/internal/attestation"
 	"github.com/secuardenai/secuarden-cli/internal/storage"
 	"github.com/secuardenai/secuarden-cli/internal/webui"
 	"github.com/spf13/cobra"
@@ -56,8 +57,12 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	}
 	defer listener.Close()
 
+	ui := webui.New(db, Version)
+	if serveDatabase == "" {
+		ui.WithAttestation(func() attestation.Report { return attestation.Current(nil, false) })
+	}
 	server := &http.Server{
-		Handler:           webui.New(db, Version).Handler(),
+		Handler:           ui.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
