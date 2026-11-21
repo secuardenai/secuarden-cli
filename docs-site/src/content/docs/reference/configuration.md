@@ -29,4 +29,4 @@ secret. Paths and metadata can also be sensitive. Review exports before sharing.
 
 Contracts are embedded in the CLI, not supplied through an editable policy file.
 Their current scope is shared adapter hook configuration. See
-[embedded capture contracts](/integrity/contracts/).
+[embedded capture contracts](/secuarden-cli/integrity/contracts/).

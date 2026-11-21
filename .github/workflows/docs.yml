@@ -2,6 +2,7 @@ name: Documentation
 
 on:
   push:
+    branches: [main]
     paths:
       - 'docs-site/**'
       - '.github/workflows/docs.yml'
@@ -38,3 +39,26 @@ jobs:
           name: cli-docs-static
           path: docs-site/dist
           retention-days: 7
+      - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs-site/dist
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

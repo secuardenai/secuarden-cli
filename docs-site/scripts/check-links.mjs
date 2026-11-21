@@ -2,7 +2,8 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { resolve, relative } from 'node:path';
 const root = resolve('dist');
-const origin = 'https://cli-docs.secuarden.ai';
+const origin = 'https://secuardenai.github.io';
+const base = '/secuarden-cli/';
 async function* htmlFiles(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const path = resolve(directory, entry.name);
@@ -14,15 +15,19 @@ const failures = [];
 let count = 0;
 for await (const file of htmlFiles(root)) {
   count++;
-  const route = '/' + relative(root, file).replaceAll('\\', '/').replace(/index\.html$/, '');
+  const route = base + relative(root, file).replaceAll('\\', '/').replace(/index\.html$/, '');
   const source = await readFile(file, 'utf8');
-  for (const match of source.matchAll(/\bhref=["']([^"']+)["']/g)) {
+  for (const match of source.matchAll(/\b(?:href|src)=["']([^"']+)["']/g)) {
     const href = match[1].replaceAll('&amp;', '&');
     const url = new URL(href, origin + route);
     if (url.origin !== origin) continue;
     // Starlight's error document has a virtual /404/ canonical URL.
-    if (file === resolve(root, '404.html') && url.pathname === '/404/') continue;
-    const path = resolve(root, '.' + decodeURIComponent(url.pathname));
+    if (file === resolve(root, '404.html') && url.pathname === base + '404/') continue;
+    if (!url.pathname.startsWith(base)) {
+      failures.push(`${relative(root, file)}: URL outside project base: ${href}`);
+      continue;
+    }
+    const path = resolve(root, decodeURIComponent(url.pathname.slice(base.length)));
     if (relative(root, path).startsWith('..')) throw new Error('Link escapes build output');
     try {
       const info = await stat(path);

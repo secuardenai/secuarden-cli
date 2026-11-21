@@ -1,8 +1,7 @@
 # Secuarden CLI documentation site
 
-An Astro Starlight scaffold in the public CLI repository, prepared for
-**https://cli-docs.secuarden.ai** on Cloudflare Pages. Nothing in this directory
-creates a Cloudflare project, changes DNS, or publishes automatically.
+An Astro Starlight documentation site published from `main` to
+**https://secuardenai.github.io/secuarden-cli/** using GitHub Pages.
 
 ## Develop
 
@@ -45,7 +44,7 @@ docs-site/
 ```
 
 Add a Markdown/MDX page with `title` and `description` frontmatter, then add it to
-`sidebar` in `astro.config.mjs`. Use root-relative internal links with trailing
+`sidebar` in `astro.config.mjs`. Use project-root-relative internal links beginning with `/secuarden-cli/` and trailing
 slashes. Keep commands grounded in the intended CLI release.
 
 Existing repository `docs/` files remain engineering references during migration.
@@ -53,29 +52,23 @@ Do not blindly copy them: audit stale product claims and move user-facing conten
 into the website deliberately. CLI-reference generation and release versioning
 are follow-up work, not implemented by this scaffold.
 
-## Cloudflare Pages setup (when ready)
+## GitHub Pages deployment
 
-Connect the existing public `secuardenai/secuarden-cli` repository:
+In repository Settings → Pages, select **GitHub Actions** as the build source.
+The Documentation workflow checks and builds pull requests without deploying them.
+Pushes to `main` that change the site or workflow publish after the build and
+internal link checks succeed. To redeploy manually, run the Documentation workflow
+on `main` from the Actions tab.
 
-| Setting | Value |
-| --- | --- |
-| Project name | `secuarden-cli-docs` (suggested) |
-| Root directory | `docs-site` |
-| Build command | `npm run build` |
-| Build output directory | `dist` |
-| Node version | `24.18.0` (`NODE_VERSION` build variable) |
-| Production branch | A designated release-docs branch after content review |
-| Custom domain | `cli-docs.secuarden.ai` |
+The deploy job uses the `github-pages` environment with `pages: write` and
+`id-token: write`; no personal access token or custom DNS is required.
+The organization root URL is a separate site; these docs use `/secuarden-cli/`.
+Astro's `site` and `base`, content links, and the link checker must agree on this
+project path. Search assets and navigation are generated under that base.
 
-Cloudflare Git integration installs dependencies and can create branch previews.
-For production, create/select a release-docs branch with audited, release-aligned
-content rather than publishing this feature branch as stable documentation.
-Add the custom domain through the Pages project and follow Cloudflare's DNS
-instructions. No Worker, SSR adapter, database or runtime credentials are needed
-for the static site. Never commit account tokens or deployment credentials.
-
-The GitHub documentation workflow builds and uploads an artifact only; it does
-not deploy. Cloudflare project configuration and domain setup remain manual.
+GitHub Pages does not process `public/_headers` (retained for other static hosts).
+The HTML noindex metadata and robots.txt remain in place while scaffold content
+is reviewed; publication does not remove those indexing safeguards.
 
 ## Before production publication
 
@@ -86,4 +79,4 @@ not deploy. Cloudflare project configuration and domain setup remain manual.
 - Remove the development banners after review.
 - Remove `noindex` from `astro.config.mjs` and `public/_headers`, and update
   `public/robots.txt` to permit indexing. Keep previews excluded separately.
-- Configure Cloudflare Pages and the custom domain; verify the published result.
+- Verify the GitHub Pages deployment, navigation, assets, and search.

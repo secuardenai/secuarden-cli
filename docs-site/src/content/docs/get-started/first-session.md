@@ -7,7 +7,7 @@ banner:
 
 ## Configure the repository
 
-Complete the setup for [Claude Code](/agents/claude-code/) or [Codex](/agents/codex/).
+Complete the setup for [Claude Code](/secuarden-cli/agents/claude-code/) or [Codex](/secuarden-cli/agents/codex/).
 Start a fresh agent conversation in that repository.
 
 ## Create a small, reviewable action
@@ -28,11 +28,11 @@ secuarden serve
 
 The local dashboard is available at `http://127.0.0.1:8743` while `serve` is running.
 You should see evidence from the new session. If it is absent, use the
-[troubleshooting guide](/troubleshooting/).
+[troubleshooting guide](/secuarden-cli/troubleshooting/).
 
 ## Confirm delivery separately
 
 Use `secuarden verify-live --help` for your runtime's live-verification workflow.
 A successful configuration check does not establish that a runtime delivered events.
 
-Next: [inspect reports](/guides/reports/) or [monitor capture configuration](/integrity/monitoring/).
+Next: [inspect reports](/secuarden-cli/guides/reports/) or [monitor capture configuration](/secuarden-cli/integrity/monitoring/).
